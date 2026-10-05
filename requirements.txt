@@ -1,1 +1,2 @@
 oauth2client
+google-genai
