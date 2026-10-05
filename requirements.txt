@@ -1,2 +1,7 @@
 oauth2client
 google-genai
+openpyxl
+google-api-python-client
+pandas
+streamlit
+
