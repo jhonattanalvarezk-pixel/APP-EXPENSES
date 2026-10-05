@@ -9,6 +9,24 @@ from google.genai import types
 import openpyxl
 import pandas as pd
 import streamlit as st
+from googleapiclient.discovery import build
+from oauth2client.service_account import ServiceAccountCredentials
+SCOPES = ['https://www.googleapis.com/auth/drive']
+def get_drive_service():
+	
+	       
+    creds = ServiceAccountCredentials.from_json_keyfile_name(
+        "gen-lang-client-0744288754-f19322a9d248.json", SCOPES
+    )
+    service = build("drive", "v3", credentials=creds)
+    return service
+def list_files(service):
+        results = service.files().list(pageSize=10, fields="files(id, name)", q="'1dmpCWssJGY295gx-h5V90xmbHLRdrUNE' in parents").execute()
+        files = results.get("files", [])
+        if files:
+            st.write("Archivos:")
+        for file in files:
+            st.write(f"{file['name']} ({file['id']})")
 
 # Configuración de la página
 st.set_page_config(
@@ -143,7 +161,7 @@ def extraer_datos_factura(file_bytes, mime_type, api_key):
       if uploaded_file.state.name == "FAILED":
         raise Exception("Google Gemini no pudo procesar este archivo PDF.")
 
-    modelos = ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-1.5-flash"]
+    modelos = ["gemini-1.5-flash",]
     ultimo_error = None
 
     for modelo in modelos:
@@ -493,3 +511,6 @@ elif menu == "Resumen Trimestral y Exportacion":
       st.info("Aun no hay datos para resumir.")
   else:
     st.info("No hay registros disponibles.")
+service=get_drive_service()
+list_files(service)
+
