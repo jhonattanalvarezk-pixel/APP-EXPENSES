@@ -15,7 +15,7 @@ SCOPES = ['https://www.googleapis.com/auth/drive']
 def get_drive_service():
 	
 	       
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(st.secrets["SERVICE_ACCOUNT_JSON"]), SCOPES).
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(st.secrets["SERVICE_ACCOUNT_JSON"]), SCOPES)
     
     service = build("drive", "v3", credentials=creds)
     return service
