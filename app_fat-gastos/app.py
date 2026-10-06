@@ -42,7 +42,7 @@ def get_drive_service():
   service = build("drive", "v3", credentials=creds)
   return service
 def list_files(service):
-        results = service.files().list(pageSize=10, fields="files(id, name)", q="'1dmpCWssJGY295gx-h5V90xmbHLRdrUNE' in parents").execute()
+        results = service.files().list(pageSize=10, fields="files(id, name)", q=f"'{st.secrets['DRIVE_FOLDER_ID']}' in parents").execute().
         files = results.get("files", [])
         if files:
             st.write("Archivos:")
