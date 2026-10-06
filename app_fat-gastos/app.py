@@ -9,15 +9,16 @@ from google.genai import types
 import openpyxl
 import pandas as pd
 import json
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from oauth2client.service_account import ServiceAccountCredentials
 import streamlit as st
 
-# Define los scopes de Google Drive al inicio del archivo o aquí mismo
+# Definir los permisos (Scopes) necesarios
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 
 def get_drive_service():
+  # Construimos el diccionario de credenciales directamente desde los secretos planos
   service_account_info = {
       "type": st.secrets["type"],
       "project_id": st.secrets["project_id"],
@@ -29,12 +30,15 @@ def get_drive_service():
       "token_uri": st.secrets["token_uri"],
       "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
       "client_x509_cert_url": st.secrets["client_x509_cert_url"],
-      "universe_domain": st.secrets["universe_domain"],
+      "universe_domain": st.secrets.get("universe_domain", "googleapis.com"),
   }
 
-  creds = ServiceAccountCredentials.from_json_keyfile_dict(
-      service_account_info, SCOPES
+  # Creamos las credenciales con la librería oficial de google.oauth2
+  creds = service_account.Credentials.from_service_account_info(
+      service_account_info, scopes=SCOPES
   )
+
+  # Construimos y retornamos el servicio de Drive
   service = build("drive", "v3", credentials=creds)
   return service
 def list_files(service):
