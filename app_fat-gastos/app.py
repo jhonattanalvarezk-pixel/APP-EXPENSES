@@ -302,7 +302,7 @@ if menu == "Nueva Factura (Individual/Lote)":
       accept_multiple_files=True,
   )
 
-  iif uploaded_files:
+  if uploaded_files:
   current_api_key = (
       api_key
       if "api_key" in locals() and api_key
