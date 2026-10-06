@@ -9,9 +9,9 @@ from google.genai import types
 import openpyxl
 import pandas as pd
 import json
+from googleapiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
 import streamlit as st
-googleapiclient.discovery
 
 # Define los scopes de Google Drive al inicio del archivo o aquí mismo
 SCOPES = ["https://www.googleapis.com/auth/drive"]
