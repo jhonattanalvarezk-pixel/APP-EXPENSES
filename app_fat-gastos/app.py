@@ -12,13 +12,15 @@ import json
 from oauth2client.service_account import ServiceAccountCredentials
 import streamlit as st
 
+# Define los scopes de Google Drive al inicio del archivo o aquí mismo
+SCOPES = ["https://www.googleapis.com/auth/drive"]
+
 
 def get_drive_service():
   service_account_info = {
       "type": st.secrets["type"],
       "project_id": st.secrets["project_id"],
       "private_key_id": st.secrets["private_key_id"],
-      # Usamos .replace para asegurar que los saltos de línea de la clave funcionen bien
       "private_key": st.secrets["private_key"].replace("\\n", "\n"),
       "client_email": st.secrets["client_email"],
       "client_id": st.secrets["client_id"],
