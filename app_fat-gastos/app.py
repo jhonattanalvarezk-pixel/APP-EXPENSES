@@ -302,13 +302,19 @@ if menu == "Nueva Factura (Individual/Lote)":
       accept_multiple_files=True,
   )
 
-  if uploaded_files:
-  # Verificamos si tenemos la API key disponible (ya sea por variable o en secrets)
-  current_api_key = api_key if "api_key" in locals() and api_key else st.secrets.get("GEMINI_API_KEY", "")
+  iif uploaded_files:
+  current_api_key = (
+      api_key
+      if "api_key" in locals() and api_key
+      else st.secrets.get("GEMINI_API_KEY", "")
+  )
 
   if st.button("Procesar Facturas con IA", type="primary"):
     if not current_api_key:
-      st.warning("Por favor, introduce tu Gemini API Key en la barra lateral o en los secretos.")
+      st.warning(
+          "Por favor, introduce tu Gemini API Key en la barra lateral o en los"
+          " secretos."
+      )
     else:
       for uploaded_file in uploaded_files:
         with st.spinner(f"Procesando {uploaded_file.name} con IA..."):
@@ -324,7 +330,9 @@ if menu == "Nueva Factura (Individual/Lote)":
 
           try:
             # 1. Leemos con la IA de Gemini
-            json_str = extraer_datos_factura(file_bytes, mime_type, current_api_key)
+            json_str = extraer_datos_factura(
+                file_bytes, mime_type, current_api_key
+            )
             json_str_limpio = limpiar_json_string(json_str)
             datos = json.loads(json_str_limpio)
 
@@ -347,7 +355,10 @@ if menu == "Nueva Factura (Individual/Lote)":
               if file_id:
                 st.success("¡Guardado en Google Drive correctamente!")
             except Exception as drive_error:
-              st.warning(f"Aviso: Se procesó localmente pero falló Drive: {drive_error}")
+              st.warning(
+                  f"Aviso: Se procesó localmente pero falló Drive:"
+                  f" {drive_error}"
+              )
 
           except Exception as e:
             st.error(f"Error procesando {uploaded_file.name}: {e}")
