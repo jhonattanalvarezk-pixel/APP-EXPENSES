@@ -13,12 +13,19 @@ from googleapiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
 SCOPES = ['https://www.googleapis.com/auth/drive']
 def get_drive_service():
-	
-	       
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(st.secrets["SERVICE_ACCOUNT_JSON"]), SCOPES)
-    
-    service = build("drive", "v3", credentials=creds)
-    return service
+  # Comprobamos cómo llega el secreto para evitar errores de tipo
+  raw_secret = st.secrets["SERVICE_ACCOUNT_JSON"]
+
+  if isinstance(raw_secret, str):
+    service_account_info = json.loads(raw_secret)
+  else:
+    service_account_info = dict(raw_secret)
+
+  creds = ServiceAccountCredentials.from_json_keyfile_dict(
+      service_account_info, SCOPES
+  )
+  service = build("drive", "v3", credentials=creds)
+  return service
 def list_files(service):
         results = service.files().list(pageSize=10, fields="files(id, name)", q="'1dmpCWssJGY295gx-h5V90xmbHLRdrUNE' in parents").execute()
         files = results.get("files", [])
