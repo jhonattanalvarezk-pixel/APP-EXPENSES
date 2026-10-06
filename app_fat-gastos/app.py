@@ -302,57 +302,55 @@ if menu == "Nueva Factura (Individual/Lote)":
       accept_multiple_files=True,
   )
 
-  if uploaded_files and not api_key:
-    st.warning("Por favor, introduce tu Gemini API Key en la barra lateral.")
+  if uploaded_files:
+  # Verificamos si tenemos la API key disponible (ya sea por variable o en secrets)
+  current_api_key = api_key if "api_key" in locals() and api_key else st.secrets.get("GEMINI_API_KEY", "")
 
-elif uploaded_files and api_key:
-  # 1. Aseguramos que el botón de procesar se muestre siempre
   if st.button("Procesar Facturas con IA", type="primary"):
-    for uploaded_file in uploaded_files:
-      with st.spinner(f"Procesando {uploaded_file.name} con IA..."):
-        file_bytes = uploaded_file.getvalue()
-        mime_type = uploaded_file.type
+    if not current_api_key:
+      st.warning("Por favor, introduce tu Gemini API Key en la barra lateral o en los secretos.")
+    else:
+      for uploaded_file in uploaded_files:
+        with st.spinner(f"Procesando {uploaded_file.name} con IA..."):
+          file_bytes = uploaded_file.getvalue()
+          mime_type = uploaded_file.type
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_filename = f"{timestamp}_{uploaded_file.name}"
-        file_path = os.path.join(PDF_DIR, safe_filename)
+          timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+          safe_filename = f"{timestamp}_{uploaded_file.name}"
+          file_path = os.path.join(PDF_DIR, safe_filename)
 
-        with open(file_path, "wb") as f:
-          f.write(file_bytes)
+          with open(file_path, "wb") as f:
+            f.write(file_bytes)
 
-        try:
-          # 2. Primero leemos la factura con la IA de Gemini
-          json_str = extraer_datos_factura(file_bytes, mime_type, api_key)
-          json_str_limpio = limpiar_json_string(json_str)
-          datos = json.loads(json_str_limpio)
-
-          st.session_state[f"datos_{safe_filename}"] = {
-              "datos": datos,
-              "safe_filename": safe_filename,
-              "file_path": file_path,
-              "mime_type": mime_type,
-          }
-          st.success(f"¡Procesado con éxito por la IA: {uploaded_file.name}!")
-
-          # 3. Después subimos la copia automáticamente a Google Drive
           try:
-            st.info(f"Subiendo copia a Google Drive...")
-            file_id = subir_archivo_a_drive(
-                ruta_archivo_local=file_path,
-                nombre_archivo=safe_filename,
-                mime_type=mime_type,
-            )
-            if file_id:
-              st.success(f"¡Guardado en Google Drive correctamente!")
-          except Exception as drive_error:
-            st.warning(
-                f"Aviso: Se procesó localmente pero falló Drive:"
-                f" {drive_error}"
-            )
+            # 1. Leemos con la IA de Gemini
+            json_str = extraer_datos_factura(file_bytes, mime_type, current_api_key)
+            json_str_limpio = limpiar_json_string(json_str)
+            datos = json.loads(json_str_limpio)
 
-        except Exception as e:
-            
-          st.error(f"Error procesando {uploaded_file.name}: {e}")
+            st.session_state[f"datos_{safe_filename}"] = {
+                "datos": datos,
+                "safe_filename": safe_filename,
+                "file_path": file_path,
+                "mime_type": mime_type,
+            }
+            st.success(f"¡Procesado con éxito por la IA: {uploaded_file.name}!")
+
+            # 2. Subimos la copia automáticamente a Google Drive
+            try:
+              st.info("Subiendo copia a Google Drive...")
+              file_id = subir_archivo_a_drive(
+                  ruta_archivo_local=file_path,
+                  nombre_archivo=safe_filename,
+                  mime_type=mime_type,
+              )
+              if file_id:
+                st.success("¡Guardado en Google Drive correctamente!")
+            except Exception as drive_error:
+              st.warning(f"Aviso: Se procesó localmente pero falló Drive: {drive_error}")
+
+          except Exception as e:
+            st.error(f"Error procesando {uploaded_file.name}: {e}")
   # Renderizado de pendientes
   keys_to_show = [
       k for k in st.session_state.keys() if k.startswith("datos_")
