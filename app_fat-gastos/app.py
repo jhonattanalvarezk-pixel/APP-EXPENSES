@@ -13,13 +13,19 @@ from googleapiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
 SCOPES = ['https://www.googleapis.com/auth/drive']
 def get_drive_service():
-  # Comprobamos cómo llega el secreto para evitar errores de tipo
-  raw_secret = st.secrets["SERVICE_ACCOUNT_JSON"]
-
-  if isinstance(raw_secret, str):
+  # Intentamos obtener directamente el secreto como diccionario de Streamlit
+  try:
+    service_account_info = dict(st.secrets["SERVICE_ACCOUNT_JSON"])
+  except Exception:
+    # Si falla porque realmente es un string plano, lo parseamos
+    raw_secret = st.secrets["SERVICE_ACCOUNT_JSON"]
     service_account_info = json.loads(raw_secret)
-  else:
-    service_account_info = dict(raw_secret)
+
+  # Asegurarnos de que los saltos de línea de la clave privada sean correctos
+  if "private_key" in service_account_info:
+    service_account_info["private_key"] = service_account_info[
+        "private_key"
+    ].replace("\\n", "\n")
 
   creds = ServiceAccountCredentials.from_json_keyfile_dict(
       service_account_info, SCOPES
