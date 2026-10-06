@@ -8,33 +8,25 @@ from google import genai
 from google.genai import types
 import openpyxl
 import pandas as pd
-import streamlit as st
-from googleapiclient.discovery import build
+import json
 from oauth2client.service_account import ServiceAccountCredentials
-SCOPES = ['https://www.googleapis.com/auth/drive']
-def get_drive_service():
-  # Construimos el diccionario directamente desde los secretos individuales
-  # evitando por completo el uso de json.loads() y errores de formato.
-  service_account_info = {
-      "type": st.secrets["type"],
-      "project_id": st.secrets["project_id"],
-      "private_key_id": st.secrets["private_key_id"],
-      "private_key": st.secrets["private_key"].replace("\\n", "\n"),
-      "client_email": st.secrets["client_email"],
-      "client_id": st.secrets.get("client_id", ""),
-      "auth_uri": st.secrets.get(
-          "auth_uri", "https://accounts.google.com/o/oauth2/auth"
-      ),
-      "token_uri": st.secrets.get(
-          "token_uri", "https://oauth2.googleapis.com/token"
-      ),
-      "auth_provider_x509_cert_url": st.secrets.get(
-          "auth_provider_x509_cert_url",
-          "https://www.googleapis.com/oauth2/v1/certs",
-      ),
-      "client_x509_cert_url": st.secrets.get("client_x509_cert_url", ""),
-  }
+import streamlit as st
 
+
+def get_drive_service():
+  # 1. Leemos el string JSON guardado en los secretos de Streamlit
+  raw_json = st.secrets["SERVICE_ACCOUNT_JSON"]
+
+  # 2. Convertimos el string a un diccionario de Python
+  service_account_info = json.loads(raw_json)
+
+  # 3. Corregimos los saltos de línea de la clave privada por seguridad
+  if "private_key" in service_account_info:
+    service_account_info["private_key"] = service_account_info[
+        "private_key"
+    ].replace("\\n", "\n")
+
+  # 4. Creamos las credenciales
   creds = ServiceAccountCredentials.from_json_keyfile_dict(
       service_account_info, SCOPES
   )
