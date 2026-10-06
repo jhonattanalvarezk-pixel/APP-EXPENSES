@@ -11,6 +11,7 @@ import pandas as pd
 import json
 from oauth2client.service_account import ServiceAccountCredentials
 import streamlit as st
+googleapiclient.discovery
 
 # Define los scopes de Google Drive al inicio del archivo o aquí mismo
 SCOPES = ["https://www.googleapis.com/auth/drive"]
