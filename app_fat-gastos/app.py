@@ -305,7 +305,7 @@ if menu == "Nueva Factura (Individual/Lote)":
   if uploaded_files and not api_key:
     st.warning("Por favor, introduce tu Gemini API Key en la barra lateral.")
 
-  elif uploaded_files and api_key:
+elif uploaded_files and api_key:
   if st.button("Procesar Facturas con IA", type="primary"):
     for uploaded_file in uploaded_files:
       with st.spinner(f"Procesando {uploaded_file.name}..."):
