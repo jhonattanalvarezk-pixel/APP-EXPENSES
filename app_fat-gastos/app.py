@@ -14,13 +14,21 @@ import streamlit as st
 
 
 def get_drive_service():
-  # Obtenemos el string JSON de los secretos y limpiamos posibles retornos de carro
-  raw_json = st.secrets["SERVICE_ACCOUNT_JSON"].strip()
+  service_account_info = {
+      "type": st.secrets["type"],
+      "project_id": st.secrets["project_id"],
+      "private_key_id": st.secrets["private_key_id"],
+      # Usamos .replace para asegurar que los saltos de línea de la clave funcionen bien
+      "private_key": st.secrets["private_key"].replace("\\n", "\n"),
+      "client_email": st.secrets["client_email"],
+      "client_id": st.secrets["client_id"],
+      "auth_uri": st.secrets["auth_uri"],
+      "token_uri": st.secrets["token_uri"],
+      "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
+      "client_x509_cert_url": st.secrets["client_x509_cert_url"],
+      "universe_domain": st.secrets["universe_domain"],
+  }
 
-  # Convertimos el string JSON en un diccionario de Python de forma segura
-  service_account_info = json.loads(raw_json)
-
-  # Creamos las credenciales para Google Drive
   creds = ServiceAccountCredentials.from_json_keyfile_dict(
       service_account_info, SCOPES
   )
