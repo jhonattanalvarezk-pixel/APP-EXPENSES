@@ -305,7 +305,7 @@ if menu == "Nueva Factura (Individual/Lote)":
  if uploaded_files:
   current_api_key = (
       api_key
-      if "api_key" in locals() and api_key
+      if ("api_key" in locals() and api_key)
       else st.secrets.get("GEMINI_API_KEY", "")
   )
 
