@@ -12,6 +12,43 @@ import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import streamlit as st
+from googleapiclient.http import MediaFileUpload
+import tempfile
+from googleapiclient.http import MediaFileUpload
+
+def subir_archivo_a_drive(
+    ruta_archivo_local, nombre_archivo, mime_type="application/pdf"
+):
+  """Sube un archivo local (PDF o imagen) a la carpeta de Google Drive especificada."""
+  try:
+    # 1. Obtenemos el servicio autenticado de Drive
+    service = get_drive_service()
+
+    # 2. Recuperamos el ID de la carpeta desde los secretos o usamos el valor por defecto
+    folder_id = st.secrets.get(
+        "DRIVE_FOLDER_ID", "1dmpCWssJGY295gx-h5V90xmbHLRdrUNE"
+    )
+
+    # 3. Definimos los metadatos del archivo y su carpeta contenedora
+    file_metadata = {"name": nombre_archivo, "parents": [folder_id]}
+
+    # 4. Preparamos el archivo multimedia con MediaFileUpload
+    media = MediaFileUpload(
+        ruta_archivo_local, mimetype=mime_type, resumable=True
+    )
+
+    # 5. Ejecutamos la subida a Google Drive
+    file = (
+        service.files()
+        .create(body=file_metadata, media_body=media, fields="id")
+        .execute()
+    )
+
+    return file.get("id")
+
+  except Exception as e:
+    st.error(f"Error al subir el archivo a Google Drive: {e}")
+    return None
 
 # Definir los permisos (Scopes) necesarios
 SCOPES = ["https://www.googleapis.com/auth/drive"]
@@ -42,7 +79,7 @@ def get_drive_service():
   service = build("drive", "v3", credentials=creds)
   return service
 def list_files(service):
-        results = service.files().list(pageSize=10, fields="files(id, name)", q=f"'{st.secrets['DRIVE_FOLDER_ID']}' in parents").execute()
+        results = service.files().list(pageSize=10, fields="files(id, name)", q="'1dmpCWssJGY295gx-h5V90xmbHLRdrUNE' in parents").execute()
         files = results.get("files", [])
         if files:
             st.write("Archivos:")
@@ -269,33 +306,50 @@ if menu == "Nueva Factura (Individual/Lote)":
     st.warning("Por favor, introduce tu Gemini API Key en la barra lateral.")
 
   elif uploaded_files and api_key:
-    if st.button("Procesar Facturas con IA", type="primary"):
-      for uploaded_file in uploaded_files:
-        with st.spinner(f"Procesando {uploaded_file.name}..."):
-          file_bytes = uploaded_file.getvalue()
-          mime_type = uploaded_file.type
+  if st.button("Procesar Facturas con IA", type="primary"):
+    for uploaded_file in uploaded_files:
+      with st.spinner(f"Procesando {uploaded_file.name}..."):
+        file_bytes = uploaded_file.getvalue()
+        mime_type = uploaded_file.type
 
-          timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-          safe_filename = f"{timestamp}_{uploaded_file.name}"
-          file_path = os.path.join(PDF_DIR, safe_filename)
-          with open(file_path, "wb") as f:
-            f.write(file_bytes)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_filename = f"{timestamp}_{uploaded_file.name}"
+        file_path = os.path.join(PDF_DIR, safe_filename)
+        with open(file_path, "wb") as f:
+          f.write(file_bytes)
 
+        try:
+          json_str = extraer_datos_factura(file_bytes, mime_type, api_key)
+          json_str_limpio = limpiar_json_string(json_str)
+          datos = json.loads(json_str_limpio)
+
+          st.session_state[f"datos_{safe_filename}"] = {
+              "datos": datos,
+              "safe_filename": safe_filename,
+              "file_path": file_path,
+              "mime_type": mime_type,
+          }
+          st.success(f"Procesado con exito: {uploaded_file.name}!")
+
+          # === AQUÍ AGREGAMOS LA SUBIDA AUTOMÁTICA A GOOGLE DRIVE ===
           try:
-            json_str = extraer_datos_factura(file_bytes, mime_type, api_key)
-            json_str_limpio = limpiar_json_string(json_str)
-            datos = json.loads(json_str_limpio)
+            st.info(f"Subiendo {uploaded_file.name} a Google Drive...")
+            file_id = subir_archivo_a_drive(
+                ruta_archivo_local=file_path,
+                nombre_archivo=safe_filename,
+                mime_type=mime_type,
+            )
+            if file_id:
+              st.success(f"¡Guardado en Google Drive con ID: {file_id}!")
+          except Exception as drive_error:
+            st.warning(
+                f"No se pudo subir a Drive, pero se procesó localmente:"
+                f" {drive_error}"
+            )
+          # ==========================================================
 
-            st.session_state[f"datos_{safe_filename}"] = {
-                "datos": datos,
-                "safe_filename": safe_filename,
-                "file_path": file_path,
-                "mime_type": mime_type,
-            }
-            st.success(f"Procesado con exito: {uploaded_file.name}!")
-
-          except Exception as e:
-            st.error(f"Error procesando {uploaded_file.name}: {e}")
+        except Exception as e:
+          st.error(f"Error procesando {uploaded_file.name}: {e}")
 
   # Renderizado de pendientes
   keys_to_show = [
