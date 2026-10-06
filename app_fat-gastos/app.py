@@ -331,7 +331,7 @@ elif uploaded_files and api_key:
           }
           st.success(f"Procesado con exito: {uploaded_file.name}!")
 
-          # === AQUÍ AGREGAMOS LA SUBIDA AUTOMÁTICA A GOOGLE DRIVE ===
+          # Subida automática a Google Drive
           try:
             st.info(f"Subiendo {uploaded_file.name} a Google Drive...")
             file_id = subir_archivo_a_drive(
@@ -346,11 +346,9 @@ elif uploaded_files and api_key:
                 f"No se pudo subir a Drive, pero se procesó localmente:"
                 f" {drive_error}"
             )
-          # ==========================================================
 
         except Exception as e:
           st.error(f"Error procesando {uploaded_file.name}: {e}")
-
   # Renderizado de pendientes
   keys_to_show = [
       k for k in st.session_state.keys() if k.startswith("datos_")
