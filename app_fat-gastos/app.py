@@ -13,19 +13,27 @@ from googleapiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
 SCOPES = ['https://www.googleapis.com/auth/drive']
 def get_drive_service():
-  # Intentamos obtener directamente el secreto como diccionario de Streamlit
-  try:
-    service_account_info = dict(st.secrets["SERVICE_ACCOUNT_JSON"])
-  except Exception:
-    # Si falla porque realmente es un string plano, lo parseamos
-    raw_secret = st.secrets["SERVICE_ACCOUNT_JSON"]
-    service_account_info = json.loads(raw_secret)
-
-  # Asegurarnos de que los saltos de línea de la clave privada sean correctos
-  if "private_key" in service_account_info:
-    service_account_info["private_key"] = service_account_info[
-        "private_key"
-    ].replace("\\n", "\n")
+  # Construimos el diccionario directamente desde los secretos individuales
+  # evitando por completo el uso de json.loads() y errores de formato.
+  service_account_info = {
+      "type": st.secrets["type"],
+      "project_id": st.secrets["project_id"],
+      "private_key_id": st.secrets["private_key_id"],
+      "private_key": st.secrets["private_key"].replace("\\n", "\n"),
+      "client_email": st.secrets["client_email"],
+      "client_id": st.secrets.get("client_id", ""),
+      "auth_uri": st.secrets.get(
+          "auth_uri", "https://accounts.google.com/o/oauth2/auth"
+      ),
+      "token_uri": st.secrets.get(
+          "token_uri", "https://oauth2.googleapis.com/token"
+      ),
+      "auth_provider_x509_cert_url": st.secrets.get(
+          "auth_provider_x509_cert_url",
+          "https://www.googleapis.com/oauth2/v1/certs",
+      ),
+      "client_x509_cert_url": st.secrets.get("client_x509_cert_url", ""),
+  }
 
   creds = ServiceAccountCredentials.from_json_keyfile_dict(
       service_account_info, SCOPES
