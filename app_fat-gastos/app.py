@@ -19,6 +19,26 @@ import time
 import base64
 from google.oauth2.credentials import Credentials
 import google_auth_oauthlib.flow
+import streamlit as st
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+
+def get_drive_service():
+    """Autentica con Google Drive usando las credenciales OAuth y el Refresh Token."""
+    creds = Credentials(
+        None,
+        refresh_token=st.secrets["OAUTH_REFRESH_TOKEN"],
+        client_id=st.secrets["OAUTH_CLIENT_ID"],
+        client_secret=st.secrets["OAUTH_CLIENT_SECRET"],
+        token_uri="https://oauth2.googleapis.com/token",
+    )
+    
+    # Refresca el token automáticamente si ha expirado
+    if not creds.valid:
+        creds.refresh(Request())
+        
+    return build("drive", "v3", credentials=creds)
 
 def get_drive_service():
     """Conecta a Google Drive usando las credenciales OAuth 2.0 del usuario personal."""
