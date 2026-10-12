@@ -11,48 +11,34 @@ import pandas as pd
 import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 import streamlit as st
-from googleapiclient.http import MediaFileUpload
-import tempfile
-from googleapiclient.http import MediaFileUpload
+import time
+import base64
 
-def subir_archivo_a_drive(
-    ruta_archivo_local, nombre_archivo, mime_type="application/pdf"
-):
-  """Sube un archivo local (PDF o imagen) a la carpeta de Google Drive especificada."""
-  try:
-    # 1. Obtenemos el servicio autenticado de Drive
-    service = get_drive_service()
+def mostrar_pdf_en_visor(file_path):
+    """Muestra un PDF incrustado directamente en la interfaz de Streamlit."""
+    try:
+        with open(file_path, "rb") as f:
+            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600px" type="application/pdf"></iframe>'
+        st.markdown(pdf_display, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"No se pudo cargar el visor de PDF: {e}")
 
-    # 2. Recuperamos el ID de la carpeta desde los secretos o usamos el valor por defecto
-    folder_id = st.secrets.get(
-        "DRIVE_FOLDER_ID", "1dmpCWssJGY295gx-h5V90xmbHLRdrUNE"
-    )
-
-    # 3. Definimos los metadatos del archivo y su carpeta contenedora
-    file_metadata = {"name": nombre_archivo, "parents": [folder_id]}
-
-    # 4. Preparamos el archivo multimedia con MediaFileUpload
-    media = MediaFileUpload(
-        ruta_archivo_local, mimetype=mime_type, resumable=True
-    )
-
-    # 5. Ejecutamos la subida a Google Drive
-    file = (
-        service.files()
-        .create(body=file_metadata, media_body=media, fields="id")
-        .execute()
-    )
-
-    return file.get("id")
-
-  except Exception as e:
-    st.error(f"Error al subir el archivo a Google Drive: {e}")
-    return None
+def llamar_gemini_con_reintento(prompt, archivo, max_intentos=3):
+    for intento in range(max_intentos):
+        try:
+            response = model.generate_content([prompt, archivo])
+            return response
+        except Exception as e:
+            if "503" in str(e) and intento < max_intentos - 1:
+                time.sleep(2)
+                continue
+            raise e
 
 # Definir los permisos (Scopes) necesarios
 SCOPES = ["https://www.googleapis.com/auth/drive"]
-
 
 def get_drive_service():
   # Construimos el diccionario de credenciales directamente desde los secretos planos
@@ -70,21 +56,44 @@ def get_drive_service():
       "universe_domain": st.secrets.get("universe_domain", "googleapis.com"),
   }
 
-  # Creamos las credenciales con la librería oficial de google.oauth2
   creds = service_account.Credentials.from_service_account_info(
       service_account_info, scopes=SCOPES
   )
 
-  # Construimos y retornamos el servicio de Drive
   service = build("drive", "v3", credentials=creds)
   return service
+
+def subir_archivo_a_drive(file_path, file_name):
+    """Sube un archivo local a la carpeta de Google Drive configurada en los secretos."""
+    try:
+        service = get_drive_service()
+        folder_id = st.secrets.get('DRIVE_FOLDER_ID')
+        
+        file_metadata = {
+            'name': file_name,
+            'parents': [folder_id]
+        }
+        
+        media = MediaFileUpload(file_path, resumable=True)
+        
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
+        
+        return file.get('id')
+    except Exception as e:
+        print(f"Error subiendo a Google Drive: {e}")
+        return None
+
 def list_files(service):
-        results = service.files().list(pageSize=10, fields="files(id, name)", q="'1dmpCWssJGY295gx-h5V90xmbHLRdrUNE' in parents").execute()
+        results = service.files().list(pageSize=10, fields="files(id, name)", q=f"'{st.secrets['DRIVE_FOLDER_ID']}' in parents").execute()
         files = results.get("files", [])
         if files:
-            st.write("Archivos:")
+            st.write("Archivos en Google Drive:")
         for file in files:
-            st.write(f"{file['name']} ({file['id']})")
+            st.write(f"- {file['name']}")
 
 # Configuración de la página
 st.set_page_config(
@@ -134,15 +143,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- MOSTRAR LOGO EN LA BARRA LATERAL ---
-LOGO_PATH = "logo.png"  # Cambia esto por la ruta o nombre de tu archivo de logo
+LOGO_PATH = "logo.png"
 
 if os.path.exists(LOGO_PATH):
   st.sidebar.image(LOGO_PATH, use_container_width=True)
 else:
   st.sidebar.info(f"💡 Coloca tu archivo '{LOGO_PATH}' en la carpeta del app.")
 
-# Configuración de API Key
 st.sidebar.title("Configuracion")
 api_key = st.sidebar.text_input(
     "Gemini API Key", type="password", value=os.environ.get("GEMINI_API_KEY", "")
@@ -152,7 +159,6 @@ EXCEL_FILE = "registro_facturas.xlsx"
 PDF_DIR = "archivos_facturas"
 
 os.makedirs(PDF_DIR, exist_ok=True)
-
 
 def inicializar_excel():
   if not os.path.exists(EXCEL_FILE):
@@ -174,16 +180,13 @@ def inicializar_excel():
     ws.append(headers)
     wb.save(EXCEL_FILE)
 
-
 inicializar_excel()
-
 
 def limpiar_json_string(texto: str) -> str:
   texto = re.sub(r"^```json\s*", "", texto, flags=re.MULTILINE)
   texto = re.sub(r"^```\s*", "", texto, flags=re.MULTILINE)
   texto = re.sub(r"```$", "", texto, flags=re.MULTILINE)
   return texto.strip()
-
 
 def extraer_datos_factura(file_bytes, mime_type, api_key):
   client = genai.Client(api_key=api_key)
@@ -219,7 +222,7 @@ def extraer_datos_factura(file_bytes, mime_type, api_key):
       if uploaded_file.state.name == "FAILED":
         raise Exception("Google Gemini no pudo procesar este archivo PDF.")
 
-    modelos = ["gemini-3.6-flash",]
+    modelos = ["gemini-3.8-flash", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash"]
     ultimo_error = None
 
     for modelo in modelos:
@@ -264,10 +267,8 @@ def extraer_datos_factura(file_bytes, mime_type, api_key):
         pass
 
   raise Exception(
-      "Los servidores de Gemini estan con alta demanda. Reintentalo en unos"
-      " instantes."
+      "Los servidores de Gemini estan con alta demanda. Reintentalo en unos instantes."
   )
-
 
 # --- CABECERA PRINCIPAL ---
 col_head1, col_head2 = st.columns([0.8, 0.2])
@@ -302,37 +303,24 @@ if menu == "Nueva Factura (Individual/Lote)":
       accept_multiple_files=True,
   )
 
- if uploaded_files:
-  current_api_key = (
-      api_key
-      if ("api_key" in locals() and api_key)
-      else st.secrets.get("GEMINI_API_KEY", "")
-  )
+  if uploaded_files and not api_key:
+    st.warning("Por favor, introduce tu Gemini API Key en la barra lateral.")
 
-  if st.button("Procesar Facturas con IA", type="primary"):
-    if not current_api_key:
-      st.warning(
-          "Por favor, introduce tu Gemini API Key en la barra lateral o en los"
-          " secretos."
-      )
-    else:
+  elif uploaded_files and api_key:
+    if st.button("Procesar Facturas con IA", type="primary"):
       for uploaded_file in uploaded_files:
-        with st.spinner(f"Procesando {uploaded_file.name} con IA..."):
+        with st.spinner(f"Procesando {uploaded_file.name}..."):
           file_bytes = uploaded_file.getvalue()
           mime_type = uploaded_file.type
 
           timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
           safe_filename = f"{timestamp}_{uploaded_file.name}"
           file_path = os.path.join(PDF_DIR, safe_filename)
-
           with open(file_path, "wb") as f:
             f.write(file_bytes)
 
           try:
-            # 1. Leemos con la IA de Gemini
-            json_str = extraer_datos_factura(
-                file_bytes, mime_type, current_api_key
-            )
+            json_str = extraer_datos_factura(file_bytes, mime_type, api_key)
             json_str_limpio = limpiar_json_string(json_str)
             datos = json.loads(json_str_limpio)
 
@@ -342,27 +330,11 @@ if menu == "Nueva Factura (Individual/Lote)":
                 "file_path": file_path,
                 "mime_type": mime_type,
             }
-            st.success(f"¡Procesado con éxito por la IA: {uploaded_file.name}!")
-
-            # 2. Subimos la copia automáticamente a Google Drive
-            try:
-              st.info("Subiendo copia a Google Drive...")
-              file_id = subir_archivo_a_drive(
-                  ruta_archivo_local=file_path,
-                  nombre_archivo=safe_filename,
-                  mime_type=mime_type,
-              )
-              if file_id:
-                st.success("¡Guardado en Google Drive correctamente!")
-            except Exception as drive_error:
-              st.warning(
-                  f"Aviso: Se procesó localmente pero falló Drive:"
-                  f" {drive_error}"
-              )
+            st.success(f"Procesado con exito: {uploaded_file.name}!")
 
           except Exception as e:
             st.error(f"Error procesando {uploaded_file.name}: {e}")
-  # Renderizado de pendientes
+
   keys_to_show = [
       k for k in st.session_state.keys() if k.startswith("datos_")
   ]
@@ -382,6 +354,7 @@ if menu == "Nueva Factura (Individual/Lote)":
           item = st.session_state[key]
           datos = item["datos"]
           safe_filename = item["safe_filename"]
+          file_path = item["file_path"]
 
           nuevo_id = ws.max_row
           origen_etiqueta = (
@@ -402,16 +375,24 @@ if menu == "Nueva Factura (Individual/Lote)":
               float(datos.get("total") or 0.00),
               safe_filename,
           ])
+          
+          # Respaldo automático a Google Drive
+          subir_archivo_a_drive(file_path, safe_filename)
           del st.session_state[key]
 
         wb.save(EXCEL_FILE)
-        st.success("Todas las facturas del lote han sido guardadas en Excel!")
+        subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
+        st.success("Todas las facturas del lote han sido guardadas en Excel y respaldadas en Drive!")
         time.sleep(1)
         st.rerun()
 
     for key in keys_to_show:
       item = st.session_state[key]
       datos = item["datos"]
+      
+      if isinstance(datos, list):
+          datos = datos[0] if len(datos) > 0 else {}
+          
       safe_filename = item["safe_filename"]
       file_path = item["file_path"]
       mime_type = item["mime_type"]
@@ -428,9 +409,9 @@ if menu == "Nueva Factura (Individual/Lote)":
         col_form, col_visor = st.columns([1.2, 0.8])
 
         with col_visor:
-          st.markdown("**Visor del documento**")
+          st.markdown("**📸 Comprobación Visual del Ticket/Factura**")
           if "pdf" in mime_type:
-            st.info(f"PDF adjunto guardado en: {safe_filename}")
+            mostrar_pdf_en_visor(file_path)
           else:
             st.image(file_path, use_container_width=True)
 
@@ -502,9 +483,13 @@ if menu == "Nueva Factura (Individual/Lote)":
               ])
               wb.save(EXCEL_FILE)
 
+              # Subida automática a Google Drive
+              subir_archivo_a_drive(file_path, safe_filename)
+              subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
+
               del st.session_state[key]
               st.success(
-                  f"Factura de {f_proveedor} guardada correctamente en Excel."
+                  f"Factura de {f_proveedor} guardada en Excel y respaldada en Google Drive con exito."
               )
               time.sleep(1)
               st.rerun()
@@ -529,7 +514,8 @@ elif menu == "Listado y Edicion Interactiva":
 
       if st.button("Guardar Cambios Realizados en la Tabla"):
         edited_df.to_excel(EXCEL_FILE, index=False)
-        st.success("El archivo Excel ha sido actualizado con los cambios!")
+        subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
+        st.success("El archivo Excel ha sido actualizado y sincronizado con Google Drive!")
         time.sleep(1)
         st.rerun()
 
@@ -546,11 +532,11 @@ elif menu == "Listado y Edicion Interactiva":
         ruta_archivo = os.path.join(PDF_DIR, archivo_sel)
         if os.path.exists(ruta_archivo):
           if archivo_sel.lower().endswith(".pdf"):
-            st.info(f"El archivo es un PDF guardado en: {ruta_archivo}")
+            mostrar_pdf_en_visor(ruta_archivo)
           else:
             st.image(ruta_archivo, width=500)
         else:
-          st.warning("El archivo original no se encuentra en el servidor.")
+          st.warning("El archivo original no se encuentra en el servidor local.")
     else:
       st.info("No hay facturas registradas todavia.")
   else:
@@ -597,6 +583,3 @@ elif menu == "Resumen Trimestral y Exportacion":
       st.info("Aun no hay datos para resumir.")
   else:
     st.info("No hay registros disponibles.")
-service=get_drive_service()
-list_files(service)
-
