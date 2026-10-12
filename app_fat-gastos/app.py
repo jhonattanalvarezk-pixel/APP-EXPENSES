@@ -450,6 +450,7 @@ if menu == "Nueva Factura (Individual/Lote)":
 
           if os.path.exists(file_path):
             if safe_filename.lower().endswith(".pdf"):
+              st.info("📄 Documento PDF listo para verificar:")
               with open(file_path, "rb") as f:
                 pdf_bytes = f.read()
               st.download_button(
@@ -460,9 +461,6 @@ if menu == "Nueva Factura (Individual/Lote)":
                   key=f"dl_local_{safe_filename}",
                   type="primary"
               )
-              base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-              pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}#toolbar=0" width="100%" height="450px" style="border:none;"></iframe>'
-              st.markdown(pdf_display, unsafe_allow_html=True)
             else:
               st.image(file_path, width="stretch")
           else:
