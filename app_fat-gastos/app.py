@@ -91,7 +91,7 @@ def descargar_archivo_de_drive(nombre_archivo, destino_path):
         return False
 
 def mostrar_archivo_inteligente(file_path, archivo_nombre):
-    """Muestra la imagen o PDF directamente en pantalla asegurando su previsualización."""
+    """Muestra la imagen o PDF convertido directamente en pantalla asegurando su previsualización."""
     if not os.path.exists(file_path):
         with st.spinner("Recuperando documento..."):
             encontrado = descargar_archivo_de_drive(archivo_nombre, file_path)
@@ -112,11 +112,18 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
                 key=f"dl_visor_{archivo_nombre}",
                 type="primary"
             )
-            base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-            pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}#toolbar=0" width="100%" height="500px" style="border:none;"></iframe>'
-            st.markdown(pdf_display, unsafe_allow_html=True)
+            
+            # Convertimos la página del PDF a imagen para mostrarla visualmente en pantalla sin recuadros en blanco
+            import fitz
+            doc = fitz.open(file_path)
+            page = doc[0]
+            pix = page.get_pixmap(dpi=150)
+            img_path = file_path + "_vis.png"
+            pix.save(img_path)
+            st.image(img_path, caption="Vista previa del documento guardado", use_container_width=True)
+            
         except Exception as e:
-            st.error(f"No se pudo renderizar el PDF: {e}")
+            st.error(f"No se pudo renderizar la vista previa del PDF: {e}")
     else:
         st.image(file_path, use_container_width=True)
 
