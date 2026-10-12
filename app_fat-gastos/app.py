@@ -445,7 +445,7 @@ if menu == "Nueva Factura (Individual/Lote)":
       ):
         col_form, col_visor = st.columns([1.2, 0.8])
 
-       with col_visor:
+        with col_visor:
           st.markdown("**📸 Previsualización Local del Archivo**")
           if os.path.exists(file_path):
             if safe_filename.lower().endswith(".pdf"):
