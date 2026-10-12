@@ -99,9 +99,22 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
     if archivo_nombre.lower().endswith(".pdf"):
         try:
             with open(file_path, "rb") as f:
-                base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-            pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600px" type="application/pdf"></iframe>'
+                pdf_bytes = f.read()
+            
+            # Botón de descarga directa infalible
+            st.download_button(
+                label="📥 Descargar / Abrir PDF original",
+                data=pdf_bytes,
+                file_name=archivo_nombre,
+                mime="application/pdf",
+                key=f"dl_visor_{archivo_nombre}"
+            )
+            
+            # Intentamos renderizar el iframe con codificación limpia
+            base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+            pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}#toolbar=0" width="100%" height="600px" style="border:none;"></iframe>'
             st.markdown(pdf_display, unsafe_allow_html=True)
+            
         except Exception as e:
             st.error(f"No se pudo cargar el visor de PDF: {e}")
     else:
