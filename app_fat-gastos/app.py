@@ -55,7 +55,6 @@ def subir_archivo_a_drive(file_path, file_name):
         ).execute()
         return file.get('id')
     except Exception as e:
-        # Si es error de cuota de cuenta de servicio en Drive personal, lo advertimos limpiamente sin romper la app
         if "storage quota" in str(e) or "403" in str(e):
             st.warning("⚠️ Nota de almacenamiento: Las cuentas de servicio no pueden alojar archivos directamente en Drives personales sin cuota compartida. El registro se ha guardado correctamente en el servidor local.")
         else:
@@ -113,14 +112,13 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
                 key=f"dl_visor_{archivo_nombre}",
                 type="primary"
             )
-            # Previsualización segura mediante iframe incrustado optimizado
             base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
             pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}#toolbar=0" width="100%" height="500px" style="border:none;"></iframe>'
             st.markdown(pdf_display, unsafe_allow_html=True)
         except Exception as e:
             st.error(f"No se pudo renderizar el PDF: {e}")
     else:
-        st.image(file_path, width="stretch")
+        st.image(file_path, use_container_width=True)
 
 # Configuración de la página
 st.set_page_config(
@@ -343,7 +341,7 @@ if menu == "Nueva Factura (Individual/Lote)":
           safe_filename = f"{timestamp}_{uploaded_file.name}"
           file_path = os.path.join(PDF_DIR, safe_filename)
           
-          # Guardado inmediato local para previsualizar desde el origen del usuario
+          # Guardado inmediato local para previsualizar al instante
           with open(file_path, "wb") as f:
             f.write(file_bytes)
 
@@ -431,6 +429,11 @@ if menu == "Nueva Factura (Individual/Lote)":
       mime_type = item["mime_type"]
       file_bytes = item.get("file_bytes")
 
+      # Asegurar que el archivo físico exista antes de renderizar
+      if not os.path.exists(file_path) and file_bytes is not None:
+        with open(file_path, "wb") as f:
+          f.write(file_bytes)
+
       fecha_str = datos.get("fecha", "")
       try:
         fecha_valida = datetime.strptime(fecha_str, "%Y-%m-%d").date()
@@ -444,13 +447,9 @@ if menu == "Nueva Factura (Individual/Lote)":
 
         with col_visor:
           st.markdown("**📸 Previsualización Local del Archivo**")
-          if not os.path.exists(file_path) and file_bytes:
-            with open(file_path, "wb") as f:
-              f.write(file_bytes)
-
           if os.path.exists(file_path):
             if safe_filename.lower().endswith(".pdf"):
-              st.info("📄 Documento PDF listo para verificar:")
+              st.info("📄 Documento PDF cargado correctamente:")
               with open(file_path, "rb") as f:
                 pdf_bytes = f.read()
               st.download_button(
@@ -462,8 +461,8 @@ if menu == "Nueva Factura (Individual/Lote)":
                   type="primary"
               )
             else:
-              # Muestra la imagen (foto de cámara o subida) directamente en pantalla de forma nítida
-              st.image(file_path, caption="Imagen escaneada", use_container_width=True)
+              # Muestra la imagen directamente en pantalla de forma nítida y garantizada
+              st.image(file_path, caption="Factura / Ticket escaneado", use_container_width=True)
           else:
             st.warning("El archivo local no está disponible para previsualizar.")
 
