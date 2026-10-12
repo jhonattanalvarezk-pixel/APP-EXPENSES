@@ -38,7 +38,7 @@ def get_drive_service():
   return build("drive", "v3", credentials=creds)
 
 def subir_archivo_a_drive(file_path, file_name):
-    """Sube un archivo local a la carpeta de Google Drive configurada en los secretos."""
+    """Sube un archivo local a la carpeta de Google Drive manejando restricciones de cuota."""
     try:
         service = get_drive_service()
         folder_id = st.secrets.get('DRIVE_FOLDER_ID')
@@ -55,7 +55,11 @@ def subir_archivo_a_drive(file_path, file_name):
         ).execute()
         return file.get('id')
     except Exception as e:
-        st.error(f"❌ Error detallado al subir a Google Drive: {e}")
+        # Si es error de cuota de cuenta de servicio en Drive personal, lo advertimos limpiamente sin romper la app
+        if "storage quota" in str(e) or "403" in str(e):
+            st.warning("⚠️ Nota de almacenamiento: Las cuentas de servicio no pueden alojar archivos directamente en Drives personales sin cuota compartida. El registro se ha guardado correctamente en el servidor local.")
+        else:
+            st.error(f"❌ Error al sincronizar con Google Drive: {e}")
         return None
 
 def descargar_archivo_de_drive(nombre_archivo, destino_path):
@@ -88,15 +92,14 @@ def descargar_archivo_de_drive(nombre_archivo, destino_path):
         return False
 
 def mostrar_archivo_inteligente(file_path, archivo_nombre):
-    """Muestra la imagen o PDF asegurándose de recuperarlo de Drive si no está en local."""
+    """Muestra la imagen o PDF directamente en pantalla asegurando su previsualización."""
     if not os.path.exists(file_path):
-        with st.spinner("Descargando documento desde Google Drive..."):
+        with st.spinner("Recuperando documento..."):
             encontrado = descargar_archivo_de_drive(archivo_nombre, file_path)
             if not encontrado:
-                st.error("El archivo no se encuentra ni en el servidor local ni en Google Drive.")
+                st.error("El archivo no se encuentra disponible localmente.")
                 return
 
-    # Visualización según el tipo de archivo
     if archivo_nombre.lower().endswith(".pdf"):
         try:
             with open(file_path, "rb") as f:
@@ -110,9 +113,12 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
                 key=f"dl_visor_{archivo_nombre}",
                 type="primary"
             )
-            
+            # Previsualización segura mediante iframe incrustado optimizado
+            base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+            pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}#toolbar=0" width="100%" height="500px" style="border:none;"></iframe>'
+            st.markdown(pdf_display, unsafe_allow_html=True)
         except Exception as e:
-            st.error(f"No se pudo cargar el archivo PDF: {e}")
+            st.error(f"No se pudo renderizar el PDF: {e}")
     else:
         st.image(file_path, width="stretch")
 
@@ -337,6 +343,7 @@ if menu == "Nueva Factura (Individual/Lote)":
           safe_filename = f"{timestamp}_{uploaded_file.name}"
           file_path = os.path.join(PDF_DIR, safe_filename)
           
+          # Guardado inmediato local para previsualizar desde el origen del usuario
           with open(file_path, "wb") as f:
             f.write(file_bytes)
 
@@ -408,7 +415,7 @@ if menu == "Nueva Factura (Individual/Lote)":
 
         wb.save(EXCEL_FILE)
         subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
-        st.success("Todas las facturas del lote han sido guardadas en Excel y respaldadas en Drive!")
+        st.success("Todas las facturas del lote han sido guardadas en Excel!")
         time.sleep(1)
         st.rerun()
 
@@ -437,6 +444,10 @@ if menu == "Nueva Factura (Individual/Lote)":
 
         with col_visor:
           st.markdown("**📸 Previsualización Local del Archivo**")
+          if not os.path.exists(file_path) and file_bytes:
+            with open(file_path, "wb") as f:
+              f.write(file_bytes)
+
           if os.path.exists(file_path):
             if safe_filename.lower().endswith(".pdf"):
               with open(file_path, "rb") as f:
@@ -449,6 +460,9 @@ if menu == "Nueva Factura (Individual/Lote)":
                   key=f"dl_local_{safe_filename}",
                   type="primary"
               )
+              base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+              pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}#toolbar=0" width="100%" height="450px" style="border:none;"></iframe>'
+              st.markdown(pdf_display, unsafe_allow_html=True)
             else:
               st.image(file_path, width="stretch")
           else:
@@ -531,7 +545,7 @@ if menu == "Nueva Factura (Individual/Lote)":
 
               del st.session_state[key]
               st.success(
-                  f"Factura de {f_proveedor} guardada en Excel y respaldada en Google Drive con exito."
+                  f"Factura de {f_proveedor} guardada en Excel con exito."
               )
               time.sleep(1)
               st.rerun()
@@ -557,7 +571,7 @@ elif menu == "Listado y Edicion Interactiva":
       if st.button("Guardar Cambios Realizados en la Tabla"):
         edited_df.to_excel(EXCEL_FILE, index=False)
         subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
-        st.success("El archivo Excel ha sido actualizado y sincronizado con Google Drive!")
+        st.success("El archivo Excel ha sido actualizado correctamente!")
         time.sleep(1)
         st.rerun()
 
