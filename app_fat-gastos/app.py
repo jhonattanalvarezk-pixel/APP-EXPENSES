@@ -449,9 +449,10 @@ if menu == "Nueva Factura (Individual/Lote)":
           st.markdown("**📸 Previsualización Local del Archivo**")
           if os.path.exists(file_path):
             if safe_filename.lower().endswith(".pdf"):
-              st.info("📄 Documento PDF procesado:")
+              st.info("📄 Documento PDF convertido para previsualización:")
               with open(file_path, "rb") as f:
                 pdf_bytes = f.read()
+              
               st.download_button(
                   label="📥 Descargar PDF original",
                   data=pdf_bytes,
@@ -460,17 +461,18 @@ if menu == "Nueva Factura (Individual/Lote)":
                   key=f"dl_local_{safe_filename}",
                   type="primary"
               )
-              # Intentamos renderizar una vista previa visual si se dispone de pdf2image o mostramos aviso claro
+              
+              # Conversión automática del PDF a imagen para verlo directamente en pantalla
               try:
-                import fitz  # PyMuPDF si está disponible
+                import fitz  # Requiere PyMuPDF en el requirements.txt
                 doc = fitz.open(file_path)
                 page = doc[0]
                 pix = page.get_pixmap(dpi=150)
                 img_path = file_path + ".png"
                 pix.save(img_path)
-                st.image(img_path, caption="Vista previa de la factura", use_container_width=True)
-              except Exception:
-                st.markdown("*(Sube una foto en JPG/PNG si deseas ver la previsualización directa de imagen en pantalla)*")
+                st.image(img_path, caption="Vista previa de la factura (PDF)", use_container_width=True)
+              except Exception as e:
+                st.warning("No se pudo generar la vista previa automática. Asegúrate de incluir 'PyMuPDF' en tu archivo requirements.txt de GitHub.")
             else:
               st.image(file_path, caption="Factura / Ticket escaneado", use_container_width=True)
           else:
