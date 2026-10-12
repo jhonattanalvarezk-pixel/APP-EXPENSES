@@ -222,7 +222,7 @@ def extraer_datos_factura(file_bytes, mime_type, api_key):
       if uploaded_file.state.name == "FAILED":
         raise Exception("Google Gemini no pudo procesar este archivo PDF.")
 
-    modelos = ["gemini-3.8-flash", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash"]
+    modelos = ["gemini-3.8-flash"]
     ultimo_error = None
 
     for modelo in modelos:
