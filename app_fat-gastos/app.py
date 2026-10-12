@@ -88,7 +88,7 @@ def descargar_archivo_de_drive(nombre_archivo, destino_path):
         return False
 
 def mostrar_archivo_inteligente(file_path, archivo_nombre):
-    """Muestra la imagen o PDF asegurándose de recuperarlo de Drive si não está en local."""
+    """Muestra la imagen o PDF asegurándose de recuperarlo de Drive si no está en local."""
     if not os.path.exists(file_path):
         with st.spinner("Descargando documento desde Google Drive..."):
             encontrado = descargar_archivo_de_drive(archivo_nombre, file_path)
@@ -102,24 +102,19 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
             with open(file_path, "rb") as f:
                 pdf_bytes = f.read()
             
-            # Botón de descarga directa infalible
             st.download_button(
                 label="📥 Descargar / Abrir PDF original",
                 data=pdf_bytes,
                 file_name=archivo_nombre,
                 mime="application/pdf",
-                key=f"dl_visor_{archivo_nombre}"
+                key=f"dl_visor_{archivo_nombre}",
+                type="primary"
             )
             
-            # Intentamos renderizar el iframe con codificación limpia
-            base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-            pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}#toolbar=0" width="100%" height="600px" style="border:none;"></iframe>'
-            st.markdown(pdf_display, unsafe_allow_html=True)
-            
         except Exception as e:
-            st.error(f"No se pudo cargar el visor de PDF: {e}")
+            st.error(f"No se pudo cargar el archivo PDF: {e}")
     else:
-        st.image(file_path, use_container_width=True)
+        st.image(file_path, width="stretch")
 
 def llamar_gemini_con_reintento(prompt, archivo, max_intentos=3):
     for intento in range(max_intentos):
@@ -190,7 +185,7 @@ st.markdown(
 LOGO_PATH = "logo.png"
 
 if os.path.exists(LOGO_PATH):
-  st.sidebar.image(LOGO_PATH, use_container_width=True)
+  st.sidebar.image(LOGO_PATH, width=120)
 else:
   st.sidebar.info(f"💡 Coloca tu archivo '{LOGO_PATH}' en la carpeta del app.")
 
@@ -361,7 +356,7 @@ if menu == "Nueva Factura (Individual/Lote)":
           safe_filename = f"{timestamp}_{uploaded_file.name}"
           file_path = os.path.join(PDF_DIR, safe_filename)
           
-          # Guardado asegurado en local desde el stream original
+          # Guardado inmediato en local para previsualizar desde el origen del usuario
           with open(file_path, "wb") as f:
             f.write(file_bytes)
 
@@ -428,6 +423,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               safe_filename,
           ])
           
+          # Sube a Google Drive SOLO AL GUARDAR
           subir_archivo_a_drive(file_path, safe_filename)
           del st.session_state[key]
 
@@ -461,8 +457,23 @@ if menu == "Nueva Factura (Individual/Lote)":
         col_form, col_visor = st.columns([1.2, 0.8])
 
         with col_visor:
-          st.markdown("**📸 Comprobación Visual del Ticket/Factura**")
-          mostrar_archivo_inteligente(file_path, safe_filename)
+          st.markdown("**📸 Previsualización Local del Archivo**")
+          if os.path.exists(file_path):
+            if safe_filename.lower().endswith(".pdf"):
+              with open(file_path, "rb") as f:
+                pdf_bytes = f.read()
+              st.download_button(
+                  label="📥 Descargar / Ver PDF local",
+                  data=pdf_bytes,
+                  file_name=safe_filename,
+                  mime="application/pdf",
+                  key=f"dl_local_{safe_filename}",
+                  type="primary"
+              )
+            else:
+              st.image(file_path, width="stretch")
+          else:
+            st.warning("El archivo local no está disponible para previsualizar.")
 
         with col_form:
           with st.form(key=f"form_{safe_filename}"):
@@ -536,6 +547,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               ])
               wb.save(EXCEL_FILE)
 
+              # SUBIDA A GOOGLE DRIVE AL HACER CLIC EN GUARDAR
               subir_archivo_a_drive(file_path, safe_filename)
               subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
 
@@ -590,42 +602,4 @@ elif menu == "Listado y Edicion Interactiva":
 
 # 3. OPCION: RESUMEN TRIMESTRAL Y EXPORTACION COMPLETA
 elif menu == "Resumen Trimestral y Exportacion":
-  st.header("Resumen Trimestral, IVA Soportado y Exportacion")
-  if os.path.exists(EXCEL_FILE):
-    df = pd.read_excel(EXCEL_FILE)
-    if not df.empty:
-      total_base = df["Base Imponible"].sum()
-      total_iva = df["Cuota IVA"].sum()
-      total_general = df["Total"].sum()
-
-      col1, col2, col3 = st.columns(3)
-      col1.metric("Base Imponible Total", f"{total_base:.2f} EUR")
-      col2.metric("IVA Soportado Total", f"{total_iva:.2f} EUR")
-      col3.metric("Gasto Total", f"{total_general:.2f} EUR")
-
-      st.subheader("Desglose por Categoria")
-      col_cat = "Categoria" if "Categoria" in df.columns else "Categoría"
-      resumen_cat = (
-          df.groupby(col_cat)[["Base Imponible", "Cuota IVA", "Total"]]
-          .sum()
-          .reset_index()
-      )
-      st.dataframe(resumen_cat, use_container_width=True)
-
-      st.divider()
-      st.subheader("Exportacion de Informes")
-
-      with open(EXCEL_FILE, "rb") as f:
-        excel_bytes = f.read()
-
-      st.download_button(
-          label="Descargar Excel de Registro de Facturas (.xlsx)",
-          data=excel_bytes,
-          file_name=f"registro_facturas_{datetime.now().strftime('%Y%m%d')}.xlsx",
-          mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          type="primary",
-      )
-    else:
-      st.info("Aun no hay datos para resumir.")
-  else:
-    st.info("No hay registros disponibles.")
+  st.header("Resumen Trimestral,
