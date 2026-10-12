@@ -445,23 +445,33 @@ if menu == "Nueva Factura (Individual/Lote)":
       ):
         col_form, col_visor = st.columns([1.2, 0.8])
 
-        with col_visor:
+       with col_visor:
           st.markdown("**📸 Previsualización Local del Archivo**")
           if os.path.exists(file_path):
             if safe_filename.lower().endswith(".pdf"):
-              st.info("📄 Documento PDF cargado correctamente:")
+              st.info("📄 Documento PDF procesado:")
               with open(file_path, "rb") as f:
                 pdf_bytes = f.read()
               st.download_button(
-                  label="📥 Descargar / Ver PDF local",
+                  label="📥 Descargar PDF original",
                   data=pdf_bytes,
                   file_name=safe_filename,
                   mime="application/pdf",
                   key=f"dl_local_{safe_filename}",
                   type="primary"
               )
+              # Intentamos renderizar una vista previa visual si se dispone de pdf2image o mostramos aviso claro
+              try:
+                import fitz  # PyMuPDF si está disponible
+                doc = fitz.open(file_path)
+                page = doc[0]
+                pix = page.get_pixmap(dpi=150)
+                img_path = file_path + ".png"
+                pix.save(img_path)
+                st.image(img_path, caption="Vista previa de la factura", use_container_width=True)
+              except Exception:
+                st.markdown("*(Sube una foto en JPG/PNG si deseas ver la previsualización directa de imagen en pantalla)*")
             else:
-              # Muestra la imagen directamente en pantalla de forma nítida y garantizada
               st.image(file_path, caption="Factura / Ticket escaneado", use_container_width=True)
           else:
             st.warning("El archivo local no está disponible para previsualizar.")
