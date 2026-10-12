@@ -17,68 +17,47 @@ import io
 import streamlit as st
 import time
 import base64
+from google.oauth2.credentials import Credentials
+import google_auth_oauthlib.flow
 
 def get_drive_service():
-  """Autentica con Google Drive usando OAuth 2.0 de usuario para aprovechar la cuenta personal con espacio."""
-  SCOPES = ["https://www.googleapis.com/auth/drive"]
-  
-  # Verificamos si ya tenemos un token guardado en el estado de la sesión
-  creds = None
-  if "oauth_token" in st.session_state:
-    creds = Credentials.from_authorized_user_info(st.session_state["oauth_token"], SCOPES)
-
-  # Si no hay credenciales válidas, intentamos construirlas desde los secrets o iniciar el flujo
-  if not creds or not creds.valid:
-    if creds and creds.expired and creds.refresh_token:
-      try:
-        from google.auth.transport.requests import Request
-        creds.refresh(Request())
-      except Exception:
-        creds = None
-
-    if not creds:
-      client_id = st.secrets.get("OAUTH_CLIENT_ID")
-      client_secret = st.secrets.get("OAUTH_CLIENT_SECRET")
-      
-      if client_id and client_secret:
-        # Configuración temporal de credenciales OAuth para la sesión web
-        client_config = {
-            "web": {
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": ["https://app-expenses.streamlit.app/"]
-            }
-        }
-        
-        # Nota: Si el flujo interactivo requiere autorización web directa, 
-        # mantenemos una alternativa segura con cuenta de servicio o reintento local si es necesario.
-  
-  # Fallback a cuenta de servicio si OAuth interactivo requiere redirección web completa en Cloud
-  try:
-      service_account_info = {
-          "type": st.secrets["type"],
-          "project_id": st.secrets["project_id"],
-          "private_key_id": st.secrets["private_key_id"],
-          "private_key": st.secrets["private_key"].replace("\\n", "\n"),
-          "client_email": st.secrets["client_email"],
-          "client_id": st.secrets["client_id"],
-          "auth_uri": st.secrets["auth_uri"],
-          "token_uri": st.secrets["token_uri"],
-          "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
-          "client_x509_cert_url": st.secrets["client_x509_cert_url"],
-          "universe_domain": st.secrets.get("universe_domain", "googleapis.com"),
-      }
-      from google.oauth2 import service_account
-      creds = service_account.Credentials.from_service_account_info(
-          service_account_info, scopes=SCOPES
-      )
-  except Exception:
-      pass
-
-  return build("drive", "v3", credentials=creds)
-
+    """Conecta a Google Drive usando las credenciales OAuth 2.0 del usuario personal."""
+    SCOPES = ["https://www.googleapis.com/auth/drive"]
+    
+    client_id = st.secrets.get("OAUTH_CLIENT_ID")
+    client_secret = st.secrets.get("OAUTH_CLIENT_SECRET")
+    
+    # Si tenemos las credenciales OAuth configuradas en los secrets
+    if client_id and client_secret:
+        # Creamos las credenciales directamente con los parámetros del usuario
+        creds = Credentials(
+            None,
+            refresh_token=st.secrets.get("OAUTH_REFRESH_TOKEN", None),
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=SCOPES
+        )
+        return build("drive", "v3", credentials=creds)
+    
+    # Si faltasen las credenciales OAuth, usamos la cuenta de servicio anterior como respaldo
+    service_account_info = {
+        "type": st.secrets["type"],
+        "project_id": st.secrets["project_id"],
+        "private_key_id": st.secrets["private_key_id"],
+        "private_key": st.secrets["private_key"].replace("\\n", "\n"),
+        "client_email": st.secrets["client_email"],
+        "client_id": st.secrets["client_id"],
+        "auth_uri": st.secrets["auth_uri"],
+        "token_uri": st.secrets["token_uri"],
+        "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
+        "client_x509_cert_url": st.secrets["client_x509_cert_url"],
+        "universe_domain": st.secrets.get("universe_domain", "googleapis.com"),
+    }
+    creds = service_account.Credentials.from_service_account_info(
+        service_account_info, scopes=SCOPES
+    )
+    return build("drive", "v3", credentials=creds)
 def subir_archivo_a_drive(file_path, file_name):
     """Sube un archivo local a la carpeta de Google Drive manejando restricciones."""
     try:
