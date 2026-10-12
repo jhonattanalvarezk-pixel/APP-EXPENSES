@@ -38,6 +38,7 @@ def get_drive_service():
   return build("drive", "v3", credentials=creds)
 
 def subir_archivo_a_drive(file_path, file_name):
+    """Sube un archivo local a la carpeta de Google Drive configurada en los secretos."""
     try:
         service = get_drive_service()
         folder_id = st.secrets.get('DRIVE_FOLDER_ID')
@@ -54,7 +55,7 @@ def subir_archivo_a_drive(file_path, file_name):
         ).execute()
         return file.get('id')
     except Exception as e:
-        print(f"Error subiendo a Google Drive: {e}")
+        st.error(f"❌ Error detallado al subir a Google Drive: {e}")
         return None
 
 def descargar_archivo_de_drive(nombre_archivo, destino_path):
@@ -87,7 +88,7 @@ def descargar_archivo_de_drive(nombre_archivo, destino_path):
         return False
 
 def mostrar_archivo_inteligente(file_path, archivo_nombre):
-    """Muestra la imagen o PDF asegurándose de recuperarlo de Drive si no está en local."""
+    """Muestra la imagen o PDF asegurándose de recuperarlo de Drive si não está en local."""
     if not os.path.exists(file_path):
         with st.spinner("Descargando documento desde Google Drive..."):
             encontrado = descargar_archivo_de_drive(archivo_nombre, file_path)
@@ -359,6 +360,8 @@ if menu == "Nueva Factura (Individual/Lote)":
           timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
           safe_filename = f"{timestamp}_{uploaded_file.name}"
           file_path = os.path.join(PDF_DIR, safe_filename)
+          
+          # Guardado asegurado en local desde el stream original
           with open(file_path, "wb") as f:
             f.write(file_bytes)
 
@@ -372,6 +375,7 @@ if menu == "Nueva Factura (Individual/Lote)":
                 "safe_filename": safe_filename,
                 "file_path": file_path,
                 "mime_type": mime_type,
+                "file_bytes": file_bytes,
             }
             st.success(f"Procesado con exito: {uploaded_file.name}!")
 
@@ -398,6 +402,11 @@ if menu == "Nueva Factura (Individual/Lote)":
           datos = item["datos"]
           safe_filename = item["safe_filename"]
           file_path = item["file_path"]
+          file_bytes = item.get("file_bytes")
+
+          if not os.path.exists(file_path) and file_bytes:
+            with open(file_path, "wb") as f:
+              f.write(file_bytes)
 
           nuevo_id = ws.max_row
           origen_etiqueta = (
@@ -438,6 +447,7 @@ if menu == "Nueva Factura (Individual/Lote)":
       safe_filename = item["safe_filename"]
       file_path = item["file_path"]
       mime_type = item["mime_type"]
+      file_bytes = item.get("file_bytes")
 
       fecha_str = datos.get("fecha", "")
       try:
@@ -499,6 +509,10 @@ if menu == "Nueva Factura (Individual/Lote)":
 
             submitted = st.form_submit_button("Guardar Factura en Excel")
             if submitted:
+              if not os.path.exists(file_path) and file_bytes:
+                with open(file_path, "wb") as f:
+                  f.write(file_bytes)
+
               wb = openpyxl.load_workbook(EXCEL_FILE)
               ws = wb.active
               nuevo_id = ws.max_row
@@ -568,7 +582,6 @@ elif menu == "Listado y Edicion Interactiva":
             archivos_disponibles,
         )
         ruta_archivo = os.path.join(PDF_DIR, archivo_sel)
-        # Usamos nuestra función inteligente que descarga de Drive si no está local
         mostrar_archivo_inteligente(ruta_archivo, archivo_sel)
     else:
       st.info("No hay facturas registradas todavia.")
