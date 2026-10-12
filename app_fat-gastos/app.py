@@ -462,7 +462,8 @@ if menu == "Nueva Factura (Individual/Lote)":
                   type="primary"
               )
             else:
-              st.image(file_path, width="stretch")
+              # Muestra la imagen (foto de cámara o subida) directamente en pantalla de forma nítida
+              st.image(file_path, caption="Imagen escaneada", use_container_width=True)
           else:
             st.warning("El archivo local no está disponible para previsualizar.")
 
