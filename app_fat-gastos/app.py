@@ -11,37 +11,13 @@ import pandas as pd
 import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+import io
 import streamlit as st
 import time
 import base64
 
-def mostrar_pdf_en_visor(file_path):
-    """Muestra un PDF incrustado directamente en la interfaz de Streamlit."""
-    try:
-        with open(file_path, "rb") as f:
-            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600px" type="application/pdf"></iframe>'
-        st.markdown(pdf_display, unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"No se pudo cargar el visor de PDF: {e}")
-
-def llamar_gemini_con_reintento(prompt, archivo, max_intentos=3):
-    for intento in range(max_intentos):
-        try:
-            response = model.generate_content([prompt, archivo])
-            return response
-        except Exception as e:
-            if "503" in str(e) and intento < max_intentos - 1:
-                time.sleep(2)
-                continue
-            raise e
-
-# Definir los permisos (Scopes) necesarios
-SCOPES = ["https://www.googleapis.com/auth/drive"]
-
 def get_drive_service():
-  # Construimos el diccionario de credenciales directamente desde los secretos planos
   service_account_info = {
       "type": st.secrets["type"],
       "project_id": st.secrets["project_id"],
@@ -57,14 +33,11 @@ def get_drive_service():
   }
 
   creds = service_account.Credentials.from_service_account_info(
-      service_account_info, scopes=SCOPES
+      service_account_info, scopes=["https://www.googleapis.com/auth/drive"]
   )
-
-  service = build("drive", "v3", credentials=creds)
-  return service
+  return build("drive", "v3", credentials=creds)
 
 def subir_archivo_a_drive(file_path, file_name):
-    """Sube un archivo local a la carpeta de Google Drive configurada en los secretos."""
     try:
         service = get_drive_service()
         folder_id = st.secrets.get('DRIVE_FOLDER_ID')
@@ -73,34 +46,91 @@ def subir_archivo_a_drive(file_path, file_name):
             'name': file_name,
             'parents': [folder_id]
         }
-        
         media = MediaFileUpload(file_path, resumable=True)
-        
         file = service.files().create(
             body=file_metadata,
             media_body=media,
             fields='id'
         ).execute()
-        
         return file.get('id')
     except Exception as e:
         print(f"Error subiendo a Google Drive: {e}")
         return None
 
-def list_files(service):
-        results = service.files().list(pageSize=10, fields="files(id, name)", q=f"'{st.secrets['DRIVE_FOLDER_ID']}' in parents").execute()
+def descargar_archivo_de_drive(nombre_archivo, destino_path):
+    """Busca el archivo por su nombre en Google Drive y lo descarga a local si no existe."""
+    try:
+        service = get_drive_service()
+        folder_id = st.secrets.get('DRIVE_FOLDER_ID')
+        
+        query = f"name = '{nombre_archivo}' and '{folder_id}' in parents and trashed = false"
+        results = service.files().list(q=query, fields="files(id, name)").execute()
         files = results.get("files", [])
-        if files:
-            st.write("Archivos en Google Drive:")
-        for file in files:
-            st.write(f"- {file['name']}")
+        
+        if not files:
+            return False
+            
+        file_id = files[0]['id']
+        request = service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+            
+        fh.seek(0)
+        with open(destino_path, "wb") as f:
+            f.write(fh.read())
+        return True
+    except Exception as e:
+        print(f"Error descargando desde Google Drive: {e}")
+        return False
+
+def mostrar_archivo_inteligente(file_path, archivo_nombre):
+    """Muestra la imagen o PDF asegurándose de recuperarlo de Drive si no está en local."""
+    if not os.path.exists(file_path):
+        with st.spinner("Descargando documento desde Google Drive..."):
+            encontrado = descargar_archivo_de_drive(archivo_nombre, file_path)
+            if not encontrado:
+                st.error("El archivo no se encuentra ni en el servidor local ni en Google Drive.")
+                return
+
+    # Visualización según el tipo de archivo
+    if archivo_nombre.lower().endswith(".pdf"):
+        try:
+            with open(file_path, "rb") as f:
+                base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+            pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600px" type="application/pdf"></iframe>'
+            st.markdown(pdf_display, unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"No se pudo cargar el visor de PDF: {e}")
+    else:
+        st.image(file_path, use_container_width=True)
+
+def llamar_gemini_con_reintento(prompt, archivo, max_intentos=3):
+    for intento in range(max_intentos):
+        try:
+            response = model.generate_content([prompt, archivo])
+            return response
+        except Exception as e:
+            if "503" in str(e) and intento < max_intentos - 1:
+                time.sleep(2)
+                continue
+            raise e
+
+def list_files(service):
+    results = service.files().list(pageSize=10, fields="files(id, name)", q=f"'{st.secrets['DRIVE_FOLDER_ID']}' in parents").execute()
+    files = results.get("files", [])
+    if files:
+        st.write("Archivos en Google Drive:")
+    for file in files:
+        st.write(f"- {file['name']}")
 
 # Configuración de la página
 st.set_page_config(
     page_title="Gestión de Facturas y Gastos Pro", page_icon="🧾", layout="wide"
 )
 
-# Estilos CSS personalizados para interfaz elegante
 st.markdown(
     """
     <style>
@@ -376,7 +406,6 @@ if menu == "Nueva Factura (Individual/Lote)":
               safe_filename,
           ])
           
-          # Respaldo automático a Google Drive
           subir_archivo_a_drive(file_path, safe_filename)
           del st.session_state[key]
 
@@ -410,10 +439,7 @@ if menu == "Nueva Factura (Individual/Lote)":
 
         with col_visor:
           st.markdown("**📸 Comprobación Visual del Ticket/Factura**")
-          if "pdf" in mime_type:
-            mostrar_pdf_en_visor(file_path)
-          else:
-            st.image(file_path, use_container_width=True)
+          mostrar_archivo_inteligente(file_path, safe_filename)
 
         with col_form:
           with st.form(key=f"form_{safe_filename}"):
@@ -483,7 +509,6 @@ if menu == "Nueva Factura (Individual/Lote)":
               ])
               wb.save(EXCEL_FILE)
 
-              # Subida automática a Google Drive
               subir_archivo_a_drive(file_path, safe_filename)
               subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
 
@@ -530,13 +555,8 @@ elif menu == "Listado y Edicion Interactiva":
             archivos_disponibles,
         )
         ruta_archivo = os.path.join(PDF_DIR, archivo_sel)
-        if os.path.exists(ruta_archivo):
-          if archivo_sel.lower().endswith(".pdf"):
-            mostrar_pdf_en_visor(ruta_archivo)
-          else:
-            st.image(ruta_archivo, width=500)
-        else:
-          st.warning("El archivo original no se encuentra en el servidor local.")
+        # Usamos nuestra función inteligente que descarga de Drive si no está local
+        mostrar_archivo_inteligente(ruta_archivo, archivo_sel)
     else:
       st.info("No hay facturas registradas todavia.")
   else:
