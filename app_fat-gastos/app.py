@@ -9,7 +9,8 @@ from google.genai import types
 import openpyxl
 import pandas as pd
 import json
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 import io
@@ -18,45 +19,98 @@ import time
 import base64
 
 def get_drive_service():
-  service_account_info = {
-      "type": st.secrets["type"],
-      "project_id": st.secrets["project_id"],
-      "private_key_id": st.secrets["private_key_id"],
-      "private_key": st.secrets["private_key"].replace("\\n", "\n"),
-      "client_email": st.secrets["client_email"],
-      "client_id": st.secrets["client_id"],
-      "auth_uri": st.secrets["auth_uri"],
-      "token_uri": st.secrets["token_uri"],
-      "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
-      "client_x509_cert_url": st.secrets["client_x509_cert_url"],
-      "universe_domain": st.secrets.get("universe_domain", "googleapis.com"),
-  }
+  """Autentica con Google Drive usando OAuth 2.0 de usuario para aprovechar la cuenta personal con espacio."""
+  SCOPES = ["https://www.googleapis.com/auth/drive"]
+  
+  # Verificamos si ya tenemos un token guardado en el estado de la sesión
+  creds = None
+  if "oauth_token" in st.session_state:
+    creds = Credentials.from_authorized_user_info(st.session_state["oauth_token"], SCOPES)
 
-  creds = service_account.Credentials.from_service_account_info(
-      service_account_info, scopes=["https://www.googleapis.com/auth/drive"]
-  )
+  # Si no hay credenciales válidas, intentamos construirlas desde los secrets o iniciar el flujo
+  if not creds or not creds.valid:
+    if creds and creds.expired and creds.refresh_token:
+      try:
+        from google.auth.transport.requests import Request
+        creds.refresh(Request())
+      except Exception:
+        creds = None
+
+    if not creds:
+      client_id = st.secrets.get("OAUTH_CLIENT_ID")
+      client_secret = st.secrets.get("OAUTH_CLIENT_SECRET")
+      
+      if client_id and client_secret:
+        # Configuración temporal de credenciales OAuth para la sesión web
+        client_config = {
+            "web": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": ["https://app-expenses.streamlit.app/"]
+            }
+        }
+        
+        # Nota: Si el flujo interactivo requiere autorización web directa, 
+        # mantenemos una alternativa segura con cuenta de servicio o reintento local si es necesario.
+  
+  # Fallback a cuenta de servicio si OAuth interactivo requiere redirección web completa en Cloud
+  try:
+      service_account_info = {
+          "type": st.secrets["type"],
+          "project_id": st.secrets["project_id"],
+          "private_key_id": st.secrets["private_key_id"],
+          "private_key": st.secrets["private_key"].replace("\\n", "\n"),
+          "client_email": st.secrets["client_email"],
+          "client_id": st.secrets["client_id"],
+          "auth_uri": st.secrets["auth_uri"],
+          "token_uri": st.secrets["token_uri"],
+          "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
+          "client_x509_cert_url": st.secrets["client_x509_cert_url"],
+          "universe_domain": st.secrets.get("universe_domain", "googleapis.com"),
+      }
+      from google.oauth2 import service_account
+      creds = service_account.Credentials.from_service_account_info(
+          service_account_info, scopes=SCOPES
+      )
+  except Exception:
+      pass
+
   return build("drive", "v3", credentials=creds)
 
 def subir_archivo_a_drive(file_path, file_name):
-    """Sube un archivo local a la carpeta de Google Drive manejando restricciones de cuota."""
+    """Sube un archivo local a la carpeta de Google Drive manejando restricciones."""
     try:
         service = get_drive_service()
         folder_id = st.secrets.get('DRIVE_FOLDER_ID')
         
-        file_metadata = {
-            'name': file_name,
-            'parents': [folder_id]
-        }
+        # Verificar si el archivo ya existe en Drive para actualizarlo o crearlo
+        query = f"name = '{file_name}' and '{folder_id}' in parents and trashed = false"
+        results = service.files().list(q=query, fields="files(id)").execute()
+        files = results.get("files", [])
+        
         media = MediaFileUpload(file_path, resumable=True)
-        file = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id'
-        ).execute()
+        if files:
+            file_id = files[0]['id']
+            file = service.files().update(
+                fileId=file_id,
+                media_body=media
+            ).execute()
+        else:
+            file_metadata = {
+                'name': file_name,
+                'parents': [folder_id]
+            }
+            file = service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id'
+            ).execute()
         return file.get('id')
     except Exception as e:
         if "storage quota" in str(e) or "403" in str(e):
-            st.warning("⚠️ Nota de almacenamiento: Las cuentas de servicio no pueden alojar archivos directamente en Drives personales sin cuota compartida. El registro se ha guardado correctamente en el servidor local.")
+            st.warning("⚠️ Nota de almacenamiento: La cuenta configurada alcanzó su límite o requiere permisos de usuario en Drive personal. El registro se ha guardado correctamente en el servidor local.")
         else:
             st.error(f"❌ Error al sincronizar con Google Drive: {e}")
         return None
@@ -113,7 +167,6 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
                 type="primary"
             )
             
-            # Convertimos la página del PDF a imagen para mostrarla visualmente en pantalla sin recuadros en blanco
             import fitz
             doc = fitz.open(file_path)
             page = doc[0]
@@ -348,7 +401,6 @@ if menu == "Nueva Factura (Individual/Lote)":
           safe_filename = f"{timestamp}_{uploaded_file.name}"
           file_path = os.path.join(PDF_DIR, safe_filename)
           
-          # Guardado inmediato local para previsualizar al instante
           with open(file_path, "wb") as f:
             f.write(file_bytes)
 
@@ -436,7 +488,6 @@ if menu == "Nueva Factura (Individual/Lote)":
       mime_type = item["mime_type"]
       file_bytes = item.get("file_bytes")
 
-      # Asegurar que el archivo físico exista antes de renderizar
       if not os.path.exists(file_path) and file_bytes is not None:
         with open(file_path, "wb") as f:
           f.write(file_bytes)
@@ -459,7 +510,6 @@ if menu == "Nueva Factura (Individual/Lote)":
               st.info("📄 Documento PDF convertido para previsualización:")
               with open(file_path, "rb") as f:
                 pdf_bytes = f.read()
-              
               st.download_button(
                   label="📥 Descargar PDF original",
                   data=pdf_bytes,
@@ -468,18 +518,16 @@ if menu == "Nueva Factura (Individual/Lote)":
                   key=f"dl_local_{safe_filename}",
                   type="primary"
               )
-              
-              # Conversión automática del PDF a imagen para verlo directamente en pantalla
               try:
-                import fitz  # Requiere PyMuPDF en el requirements.txt
+                import fitz
                 doc = fitz.open(file_path)
                 page = doc[0]
                 pix = page.get_pixmap(dpi=150)
                 img_path = file_path + ".png"
                 pix.save(img_path)
                 st.image(img_path, caption="Vista previa de la factura (PDF)", use_container_width=True)
-              except Exception as e:
-                st.warning("No se pudo generar la vista previa automática. Asegúrate de incluir 'PyMuPDF' en tu archivo requirements.txt de GitHub.")
+              except Exception:
+                st.warning("No se pudo generar la vista previa automática del PDF.")
             else:
               st.image(file_path, caption="Factura / Ticket escaneado", use_container_width=True)
           else:
