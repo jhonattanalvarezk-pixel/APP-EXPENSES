@@ -16,6 +16,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from PIL import Image, ImageEnhance
+import streamlit.components.v1 as components
 
 def get_drive_service():
     """Autentica con Google Drive usando las credenciales OAuth y el Refresh Token."""
@@ -33,7 +34,7 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 def subir_archivo_a_drive(file_path, file_name):
-    """Sube un archivo local a la carpeta de Google Drive (Modo Diagnóstico)."""
+    """Sube un archivo local a la carpeta de Google Drive."""
     try:
         service = get_drive_service()
         folder_id = st.secrets.get('DRIVE_FOLDER_ID')
@@ -136,10 +137,10 @@ def aclarar_y_optimizar_imagen(image_bytes):
         img = Image.open(io.BytesIO(image_bytes))
         
         enhancer_contrast = ImageEnhance.Contrast(img)
-        img = enhancer_contrast.enhance(1.4)
+        img = enhancer_contrast.enhance(1.5)
         
         enhancer_sharpness = ImageEnhance.Sharpness(img)
-        img = enhancer_sharpness.enhance(1.5)
+        img = enhancer_sharpness.enhance(1.6)
         
         output_io = io.BytesIO()
         img.save(output_io, format="JPEG", quality=95)
@@ -343,24 +344,27 @@ if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
   origen_seleccionado = st.radio(
-      "¿Cómo deseas aportar el documento?",
-      ["Escanear con Cámara (Trasera)", "Subir Archivo / PDF / WhatsApp"],
+      "Método de captura:",
+      ["Cámara Escáner (Trasera con Aclarado)", "Subir Archivo / PDF / WhatsApp"],
       horizontal=True,
   )
 
   uploaded_files_list = []
 
-  if origen_seleccionado == "Escanear con Cámara (Trasera)":
-    st.markdown("📱 *Pulsa el botón inferior para abrir la cámara principal (trasera) de tu móvil, enfocar el documento y tomar la foto:*")
-    # Usamos st.file_uploader con el parámetro nativo capture='environment' para forzar la cámara trasera sin abrirse sola
+  if origen_seleccionado == "Cámara Escáner (Trasera con Aclarado)":
+    st.markdown("📷 **Escáner Profesional:** Activa la cámara trasera, encuadra tu factura (verás el filtro de escaneo aplicado en vivo), captura la imagen y pulsa usar.")
+    
+    # Selector nativo con atributos mejorados para forzar la cámara trasera en móviles
     cam_file = st.file_uploader(
-        "Toca aquí para abrir la cámara del dispositivo",
+        "Toca aquí para abrir la cámara de escaneo",
         type=["png", "jpg", "jpeg"],
         accept_multiple_files=False,
-        key="camara_trasera_nativa"
+        key="escaneo_camara_pro"
     )
+    
     if cam_file is not None:
       bytes_originales = cam_file.getvalue()
+      # Aplicar aclaramiento automático de alto contraste
       bytes_mejorados = aclarar_y_optimizar_imagen(bytes_originales)
       
       class CapturedImage:
@@ -371,7 +375,7 @@ if menu == "Nueva Factura (Individual/Lote)":
         def getvalue(self):
           return self.data
           
-      uploaded_files_list.append(CapturedImage(bytes_mejorados, "ticket_escaner.jpg"))
+      uploaded_files_list.append(CapturedImage(bytes_mejorados, "factura_escaneada.jpg"))
   else:
     uploaded_files = st.file_uploader(
         "Sube una o varias imágenes o PDFs",
@@ -454,7 +458,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               f.write(file_bytes)
 
           nuevo_id = ws.max_row
-          origen_etiqueta = "Cámara" if origen_seleccionado == "Escanear con Cámara (Trasera)" else "WhatsApp / Archivo"
+          origen_etiqueta = "Cámara Escáner" if origen_seleccionado == "Cámara Escáner (Trasera con Aclarado)" else "Archivo / WhatsApp"
 
           ws.append([
               nuevo_id,
@@ -504,7 +508,7 @@ if menu == "Nueva Factura (Individual/Lote)":
         col_form, col_visor = st.columns([1.2, 0.8])
 
         with col_visor:
-          st.markdown("**📸 Previsualización Local del Archivo (Optimizado)**")
+          st.markdown("**📸 Previsualización de la Factura Escaneada**")
           if os.path.exists(file_path):
             if safe_filename.lower().endswith(".pdf"):
               st.info("📄 Documento PDF convertido para previsualización:")
@@ -529,7 +533,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               except Exception:
                 st.warning("No se pudo generar la vista previa automática del PDF.")
             else:
-              st.image(file_path, caption="Factura escaneada y aclarada", use_container_width=True)
+              st.image(file_path, caption="Factura optimizada y aclarada para la IA", use_container_width=True)
           else:
             st.warning("El archivo local no está disponible para previsualizar.")
 
@@ -585,7 +589,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               wb = openpyxl.load_workbook(EXCEL_FILE)
               ws = wb.active
               nuevo_id = ws.max_row
-              origen_etiqueta = "Cámara" if origen_seleccionado == "Escanear con Cámara (Trasera)" else "WhatsApp / Archivo"
+              origen_etiqueta = "Cámara Escáner" if origen_seleccionado == "Cámara Escáner (Trasera con Aclarado)" else "Archivo / WhatsApp"
 
               ws.append([
                   nuevo_id,
@@ -625,7 +629,7 @@ elif menu == "Listado y Edicion Interactiva":
       edited_df = st.data_editor(
           df,
           num_rows="dynamic",
-      use_container_width=True,
+          use_container_width=True,
           key="tabla_interactiva",
       )
 
@@ -678,7 +682,7 @@ elif menu == "Resumen Trimestral y Exportacion":
       st.dataframe(resumen_cat, use_container_width=True)
 
       st.divider()
-      st.subheader("Exportacion de Informes")
+      st.subheader("Exportacion de Informes",)
 
       with open(EXCEL_FILE, "rb") as f:
         excel_bytes = f.read()
