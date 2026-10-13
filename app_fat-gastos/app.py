@@ -131,19 +131,16 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
         st.image(file_path, use_container_width=True)
 
 def aclarar_y_optimizar_imagen(image_bytes):
-    """Aplica mejoras de brillo, contraste y nitidez a la foto para optimizar el escaneo de la IA."""
+    """Aplica mejoras de contraste y nitidez a la foto del documento para optimizar la lectura de la IA."""
     try:
         img = Image.open(io.BytesIO(image_bytes))
         
-        # Mejorar contraste para destacar el texto de las facturas
         enhancer_contrast = ImageEnhance.Contrast(img)
         img = enhancer_contrast.enhance(1.4)
         
-        # Aumentar ligeramente la nitidez
         enhancer_sharpness = ImageEnhance.Sharpness(img)
         img = enhancer_sharpness.enhance(1.5)
         
-        # Guardar en bytes optimizados
         output_io = io.BytesIO()
         img.save(output_io, format="JPEG", quality=95)
         return output_io.getvalue()
@@ -346,22 +343,26 @@ if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
   origen_seleccionado = st.radio(
-      "De donde vienen las facturas?",
-      ["Cámara en Directo", "Subir Archivo / WhatsApp"],
+      "¿Cómo deseas aportar el documento?",
+      ["Escanear con Cámara (Trasera)", "Subir Archivo / PDF / WhatsApp"],
       horizontal=True,
   )
 
   uploaded_files_list = []
 
-  if origen_seleccionado == "Cámara en Directo":
-    st.markdown("📷 **Haz una foto directamente con tu móvil:**")
-    camera_file = st.camera_input("Tomar foto de la factura")
-    if camera_file is not None:
-      # Aplicar aclaramiento y mejora de nitidez automáticamente
-      bytes_originales = camera_file.getvalue()
+  if origen_seleccionado == "Escanear con Cámara (Trasera)":
+    st.markdown("📱 *Pulsa el botón inferior para abrir la cámara principal (trasera) de tu móvil, enfocar el documento y tomar la foto:*")
+    # Usamos st.file_uploader con el parámetro nativo capture='environment' para forzar la cámara trasera sin abrirse sola
+    cam_file = st.file_uploader(
+        "Toca aquí para abrir la cámara del dispositivo",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=False,
+        key="camara_trasera_nativa"
+    )
+    if cam_file is not None:
+      bytes_originales = cam_file.getvalue()
       bytes_mejorados = aclarar_y_optimizar_imagen(bytes_originales)
       
-      # Creamos un objeto compatible con el bucle de subida
       class CapturedImage:
         def __init__(self, data, name):
           self.data = data
@@ -370,10 +371,10 @@ if menu == "Nueva Factura (Individual/Lote)":
         def getvalue(self):
           return self.data
           
-      uploaded_files_list.append(CapturedImage(bytes_mejorados, "ticket_camara.jpg"))
+      uploaded_files_list.append(CapturedImage(bytes_mejorados, "ticket_escaner.jpg"))
   else:
     uploaded_files = st.file_uploader(
-        "Sube una o varias imagenes o PDFs",
+        "Sube una o varias imágenes o PDFs",
         type=["png", "jpg", "jpeg", "pdf"],
         accept_multiple_files=True,
     )
@@ -421,7 +422,7 @@ if menu == "Nueva Factura (Individual/Lote)":
                 "mime_type": mime_type,
                 "file_bytes": file_bytes,
             }
-            st.success(f"Procesado con exito: {uploaded_file.name}!")
+            st.success(f"¡Procesado con éxito: {uploaded_file.name}!")
 
           except Exception as e:
             st.error(f"Error procesando {uploaded_file.name}: {e}")
@@ -453,7 +454,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               f.write(file_bytes)
 
           nuevo_id = ws.max_row
-          origen_etiqueta = "Cámara" if origen_seleccionado == "Cámara en Directo" else "WhatsApp / Archivo"
+          origen_etiqueta = "Cámara" if origen_seleccionado == "Escanear con Cámara (Trasera)" else "WhatsApp / Archivo"
 
           ws.append([
               nuevo_id,
@@ -473,7 +474,7 @@ if menu == "Nueva Factura (Individual/Lote)":
 
         wb.save(EXCEL_FILE)
         subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
-        st.success("Todas las facturas del lote han sido guardadas en Excel!")
+        st.success("¡Todas las facturas del lote han sido guardadas en Excel!")
         time.sleep(1)
         st.rerun()
 
@@ -503,7 +504,7 @@ if menu == "Nueva Factura (Individual/Lote)":
         col_form, col_visor = st.columns([1.2, 0.8])
 
         with col_visor:
-          st.markdown("**📸 Previsualización Local del Archivo**")
+          st.markdown("**📸 Previsualización Local del Archivo (Optimizado)**")
           if os.path.exists(file_path):
             if safe_filename.lower().endswith(".pdf"):
               st.info("📄 Documento PDF convertido para previsualización:")
@@ -528,7 +529,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               except Exception:
                 st.warning("No se pudo generar la vista previa automática del PDF.")
             else:
-              st.image(file_path, caption="Factura / Ticket escaneado (Optimizado)", use_container_width=True)
+              st.image(file_path, caption="Factura escaneada y aclarada", use_container_width=True)
           else:
             st.warning("El archivo local no está disponible para previsualizar.")
 
@@ -584,7 +585,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               wb = openpyxl.load_workbook(EXCEL_FILE)
               ws = wb.active
               nuevo_id = ws.max_row
-              origen_etiqueta = "Cámara" if origen_seleccionado == "Cámara en Directo" else "WhatsApp / Archivo"
+              origen_etiqueta = "Cámara" if origen_seleccionado == "Escanear con Cámara (Trasera)" else "WhatsApp / Archivo"
 
               ws.append([
                   nuevo_id,
@@ -605,7 +606,7 @@ if menu == "Nueva Factura (Individual/Lote)":
 
               del st.session_state[key]
               st.success(
-                  f"Factura de {f_proveedor} guardada en Excel con exito."
+                  f"Factura de {f_proveedor} guardada en Excel con éxito."
               )
               time.sleep(1)
               st.rerun()
@@ -624,7 +625,7 @@ elif menu == "Listado y Edicion Interactiva":
       edited_df = st.data_editor(
           df,
           num_rows="dynamic",
-          use_container_width=True,
+      use_container_width=True,
           key="tabla_interactiva",
       )
 
