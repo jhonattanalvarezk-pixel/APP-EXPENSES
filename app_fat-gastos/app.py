@@ -33,7 +33,7 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 def subir_archivo_a_drive(file_path, file_name):
-    """Sube un archivo local a la carpeta de Google Drive manejando restricciones."""
+    """Sube un archivo local a la carpeta de Google Drive (Modo Diagnóstico)."""
     try:
         service = get_drive_service()
         folder_id = st.secrets.get('DRIVE_FOLDER_ID')
@@ -60,12 +60,11 @@ def subir_archivo_a_drive(file_path, file_name):
                 media_body=media,
                 fields='id'
             ).execute()
+        st.success(f"¡Subido con éxito a Drive: {file_name}!")
         return file.get('id')
     except Exception as e:
-        if "storage quota" in str(e) or "403" in str(e):
-            st.warning("⚠️ Nota de almacenamiento: La cuenta configurada alcanzó su límite o requiere permisos de usuario en Drive personal. El registro se ha guardado correctamente en el servidor local.")
-        else:
-            st.error(f"❌ Error al sincronizar con Google Drive: {e}")
+        # Mostramos el error técnico exacto en rojo para ver qué falla
+        st.error(f"❌ ERROR TÉCNICO DE GOOGLE DRIVE: {e}")
         return None
 
 def descargar_archivo_de_drive(nombre_archivo, destino_path):
@@ -259,7 +258,7 @@ def extraer_datos_factura(file_bytes, mime_type, api_key):
       if uploaded_file.state.name == "FAILED":
         raise Exception("Google Gemini no pudo procesar este archivo PDF.")
 
-    modelos = ["gemini-3.8-flash"]
+    modelos = ["gemini-2.5-flash", "gemini-2.0-flash"]
     ultimo_error = None
 
     for modelo in modelos:
