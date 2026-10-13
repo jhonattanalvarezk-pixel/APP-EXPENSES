@@ -15,6 +15,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+from PIL import Image, ImageEnhance
 
 def get_drive_service():
     """Autentica con Google Drive usando las credenciales OAuth y el Refresh Token."""
@@ -26,7 +27,6 @@ def get_drive_service():
         token_uri="https://oauth2.googleapis.com/token",
     )
     
-    # Refresca el token automáticamente si ha expirado
     if not creds.valid:
         creds.refresh(Request())
         
@@ -38,7 +38,6 @@ def subir_archivo_a_drive(file_path, file_name):
         service = get_drive_service()
         folder_id = st.secrets.get('DRIVE_FOLDER_ID')
         
-        # Verificar si el archivo ya existe en Drive para actualizarlo o crearlo
         query = f"name = '{file_name}' and '{folder_id}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id)").execute()
         files = results.get("files", [])
@@ -63,7 +62,6 @@ def subir_archivo_a_drive(file_path, file_name):
         st.success(f"¡Subido con éxito a Drive: {file_name}!")
         return file.get('id')
     except Exception as e:
-        # Mostramos el error técnico exacto en rojo para ver qué falla
         st.error(f"❌ ERROR TÉCNICO DE GOOGLE DRIVE: {e}")
         return None
 
@@ -131,6 +129,26 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
             st.error(f"No se pudo renderizar la vista previa del PDF: {e}")
     else:
         st.image(file_path, use_container_width=True)
+
+def aclarar_y_optimizar_imagen(image_bytes):
+    """Aplica mejoras de brillo, contraste y nitidez a la foto para optimizar el escaneo de la IA."""
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        
+        # Mejorar contraste para destacar el texto de las facturas
+        enhancer_contrast = ImageEnhance.Contrast(img)
+        img = enhancer_contrast.enhance(1.4)
+        
+        # Aumentar ligeramente la nitidez
+        enhancer_sharpness = ImageEnhance.Sharpness(img)
+        img = enhancer_sharpness.enhance(1.5)
+        
+        # Guardar en bytes optimizados
+        output_io = io.BytesIO()
+        img.save(output_io, format="JPEG", quality=95)
+        return output_io.getvalue()
+    except Exception:
+        return image_bytes
 
 # Configuración de la página
 st.set_page_config(
@@ -258,7 +276,7 @@ def extraer_datos_factura(file_bytes, mime_type, api_key):
       if uploaded_file.state.name == "FAILED":
         raise Exception("Google Gemini no pudo procesar este archivo PDF.")
 
-    modelos = ["gemini-3.8-flash","gemini-2.5-flash", "gemini-2.0-flash"]
+    modelos = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"]
     ultimo_error = None
 
     for modelo in modelos:
@@ -329,22 +347,57 @@ if menu == "Nueva Factura (Individual/Lote)":
 
   origen_seleccionado = st.radio(
       "De donde vienen las facturas?",
-      ["Manual / Camara", "WhatsApp / PDF Masivo"],
+      ["Cámara en Directo", "Subir Archivo / WhatsApp"],
       horizontal=True,
   )
 
-  uploaded_files = st.file_uploader(
-      "Sube una o varias imagenes o PDFs",
-      type=["png", "jpg", "jpeg", "pdf"],
-      accept_multiple_files=True,
-  )
+  uploaded_files_list = []
 
-  if uploaded_files and not api_key:
+  if origen_seleccionado == "Cámara en Directo":
+    st.markdown("📷 **Haz una foto directamente con tu móvil:**")
+    camera_file = st.camera_input("Tomar foto de la factura")
+    if camera_file is not None:
+      # Aplicar aclaramiento y mejora de nitidez automáticamente
+      bytes_originales = camera_file.getvalue()
+      bytes_mejorados = aclarar_y_optimizar_imagen(bytes_originales)
+      
+      # Creamos un objeto compatible con el bucle de subida
+      class CapturedImage:
+        def __init__(self, data, name):
+          self.data = data
+          self.name = name
+          self.type = "image/jpeg"
+        def getvalue(self):
+          return self.data
+          
+      uploaded_files_list.append(CapturedImage(bytes_mejorados, "ticket_camara.jpg"))
+  else:
+    uploaded_files = st.file_uploader(
+        "Sube una o varias imagenes o PDFs",
+        type=["png", "jpg", "jpeg", "pdf"],
+        accept_multiple_files=True,
+    )
+    if uploaded_files:
+      for uf in uploaded_files:
+        if uf.type.startswith("image/"):
+          bytes_mejorados = aclarar_y_optimizar_imagen(uf.getvalue())
+          class ProcessedImage:
+            def __init__(self, data, name, mime):
+              self.data = data
+              self.name = name
+              self.type = mime
+            def getvalue(self):
+              return self.data
+          uploaded_files_list.append(ProcessedImage(bytes_mejorados, uf.name, uf.type))
+        else:
+          uploaded_files_list.append(uf)
+
+  if uploaded_files_list and not api_key:
     st.warning("Por favor, introduce tu Gemini API Key en la barra lateral.")
 
-  elif uploaded_files and api_key:
+  elif uploaded_files_list and api_key:
     if st.button("Procesar Facturas con IA", type="primary"):
-      for uploaded_file in uploaded_files:
+      for uploaded_file in uploaded_files_list:
         with st.spinner(f"Procesando {uploaded_file.name}..."):
           file_bytes = uploaded_file.getvalue()
           mime_type = uploaded_file.type
@@ -400,11 +453,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               f.write(file_bytes)
 
           nuevo_id = ws.max_row
-          origen_etiqueta = (
-              "WhatsApp"
-              if origen_seleccionado == "WhatsApp / PDF Masivo"
-              else "Manual/Camara"
-          )
+          origen_etiqueta = "Cámara" if origen_seleccionado == "Cámara en Directo" else "WhatsApp / Archivo"
 
           ws.append([
               nuevo_id,
@@ -479,7 +528,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               except Exception:
                 st.warning("No se pudo generar la vista previa automática del PDF.")
             else:
-              st.image(file_path, caption="Factura / Ticket escaneado", use_container_width=True)
+              st.image(file_path, caption="Factura / Ticket escaneado (Optimizado)", use_container_width=True)
           else:
             st.warning("El archivo local no está disponible para previsualizar.")
 
@@ -535,11 +584,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               wb = openpyxl.load_workbook(EXCEL_FILE)
               ws = wb.active
               nuevo_id = ws.max_row
-              origen_etiqueta = (
-                  "WhatsApp"
-                  if origen_seleccionado == "WhatsApp / PDF Masivo"
-                  else "Manual/Camara"
-              )
+              origen_etiqueta = "Cámara" if origen_seleccionado == "Cámara en Directo" else "WhatsApp / Archivo"
 
               ws.append([
                   nuevo_id,
