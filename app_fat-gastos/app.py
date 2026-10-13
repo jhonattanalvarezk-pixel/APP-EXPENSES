@@ -33,7 +33,7 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 def subir_archivo_a_drive(file_path, file_name):
-    """Sube un archivo local a la carpeta de Google Drive (Modo Diagnóstico)."""
+    """Sube un archivo local a la carpeta de Google Drive."""
     try:
         service = get_drive_service()
         folder_id = st.secrets.get('DRIVE_FOLDER_ID')
@@ -342,56 +342,30 @@ menu = st.sidebar.selectbox(
 if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
-  origen_seleccionado = st.radio(
-      "¿Cómo deseas aportar el documento?",
-      ["Escanear con Cámara (Trasera)", "Subir Archivo / PDF / WhatsApp"],
-      horizontal=True,
+  st.markdown("📱 **Captura o sube tus documentos:** Al pulsar el botón inferior, tu móvil te permitirá **Tomar foto directamente con la cámara trasera** o seleccionar archivos y PDFs de WhatsApp.")
+
+  uploaded_files = st.file_uploader(
+      "Toca aquí para hacer una foto o seleccionar archivos",
+      type=["png", "jpg", "jpeg", "pdf"],
+      accept_multiple_files=True,
+      key="uploader_principal"
   )
 
   uploaded_files_list = []
-
-  if origen_seleccionado == "Escanear con Cámara (Trasera)":
-    st.markdown("📱 *Pulsa el botón inferior para abrir la cámara principal (trasera) de tu móvil, enfocar el documento y tomar la foto:*")
-    # Usamos st.file_uploader con el parámetro nativo capture='environment' para forzar la cámara trasera sin abrirse sola
-    cam_file = st.file_uploader(
-        "Toca aquí para abrir la cámara del dispositivo",
-        type=["png", "jpg", "jpeg"],
-        accept_multiple_files=False,
-        key="camara_trasera_nativa"
-    )
-    if cam_file is not None:
-      bytes_originales = cam_file.getvalue()
-      bytes_mejorados = aclarar_y_optimizar_imagen(bytes_originales)
-      
-      class CapturedImage:
-        def __init__(self, data, name):
-          self.data = data
-          self.name = name
-          self.type = "image/jpeg"
-        def getvalue(self):
-          return self.data
-          
-      uploaded_files_list.append(CapturedImage(bytes_mejorados, "ticket_escaner.jpg"))
-  else:
-    uploaded_files = st.file_uploader(
-        "Sube una o varias imágenes o PDFs",
-        type=["png", "jpg", "jpeg", "pdf"],
-        accept_multiple_files=True,
-    )
-    if uploaded_files:
-      for uf in uploaded_files:
-        if uf.type.startswith("image/"):
-          bytes_mejorados = aclarar_y_optimizar_imagen(uf.getvalue())
-          class ProcessedImage:
-            def __init__(self, data, name, mime):
-              self.data = data
-              self.name = name
-              self.type = mime
-            def getvalue(self):
-              return self.data
-          uploaded_files_list.append(ProcessedImage(bytes_mejorados, uf.name, uf.type))
-        else:
-          uploaded_files_list.append(uf)
+  if uploaded_files:
+    for uf in uploaded_files:
+      if uf.type.startswith("image/"):
+        bytes_mejorados = aclarar_y_optimizar_imagen(uf.getvalue())
+        class ProcessedImage:
+          def __init__(self, data, name, mime):
+            self.data = data
+            self.name = name
+            self.type = mime
+          def getvalue(self):
+            return self.data
+        uploaded_files_list.append(ProcessedImage(bytes_mejorados, uf.name, uf.type))
+      else:
+        uploaded_files_list.append(uf)
 
   if uploaded_files_list and not api_key:
     st.warning("Por favor, introduce tu Gemini API Key en la barra lateral.")
@@ -454,13 +428,11 @@ if menu == "Nueva Factura (Individual/Lote)":
               f.write(file_bytes)
 
           nuevo_id = ws.max_row
-          origen_etiqueta = "Cámara" if origen_seleccionado == "Escanear con Cámara (Trasera)" else "WhatsApp / Archivo"
-
           ws.append([
               nuevo_id,
               str(datos.get("fecha", datetime.now().strftime("%Y-%m-%d"))),
               str(datos.get("proveedor", "Desconocido")),
-              origen_etiqueta,
+              "Móvil / Archivo",
               str(datos.get("categoria", "Materiales")),
               float(datos.get("base_imponible") or 0.00),
               float(datos.get("iva_porcentaje") or 21.0),
@@ -585,13 +557,11 @@ if menu == "Nueva Factura (Individual/Lote)":
               wb = openpyxl.load_workbook(EXCEL_FILE)
               ws = wb.active
               nuevo_id = ws.max_row
-              origen_etiqueta = "Cámara" if origen_seleccionado == "Escanear con Cámara (Trasera)" else "WhatsApp / Archivo"
-
               ws.append([
                   nuevo_id,
                   str(f_fecha),
                   f_proveedor,
-                  origen_etiqueta,
+                  "Móvil / Archivo",
                   f_categoria,
                   f_base,
                   f_iva_p,
@@ -625,7 +595,7 @@ elif menu == "Listado y Edicion Interactiva":
       edited_df = st.data_editor(
           df,
           num_rows="dynamic",
-      use_container_width=True,
+          use_container_width=True,
           key="tabla_interactiva",
       )
 
