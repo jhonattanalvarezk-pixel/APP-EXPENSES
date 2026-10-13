@@ -8,21 +8,13 @@ from google import genai
 from google.genai import types
 import openpyxl
 import pandas as pd
-import json
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 import io
 import streamlit as st
-import time
 import base64
-from google.oauth2.credentials import Credentials
-import google_auth_oauthlib.flow
-import streamlit as st
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 def get_drive_service():
     """Autentica con Google Drive usando las credenciales OAuth y el Refresh Token."""
@@ -40,44 +32,6 @@ def get_drive_service():
         
     return build("drive", "v3", credentials=creds)
 
-def get_drive_service():
-    """Conecta a Google Drive usando las credenciales OAuth 2.0 del usuario personal."""
-    SCOPES = ["https://www.googleapis.com/auth/drive"]
-    
-    client_id = st.secrets.get("OAUTH_CLIENT_ID")
-    client_secret = st.secrets.get("OAUTH_CLIENT_SECRET")
-    
-    # Si tenemos las credenciales OAuth configuradas en los secrets
-    if client_id and client_secret:
-        # Creamos las credenciales directamente con los parámetros del usuario
-        creds = Credentials(
-            None,
-            refresh_token=st.secrets.get("OAUTH_REFRESH_TOKEN", None),
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=SCOPES
-        )
-        return build("drive", "v3", credentials=creds)
-    
-    # Si faltasen las credenciales OAuth, usamos la cuenta de servicio anterior como respaldo
-    service_account_info = {
-        "type": st.secrets["type"],
-        "project_id": st.secrets["project_id"],
-        "private_key_id": st.secrets["private_key_id"],
-        "private_key": st.secrets["private_key"].replace("\\n", "\n"),
-        "client_email": st.secrets["client_email"],
-        "client_id": st.secrets["client_id"],
-        "auth_uri": st.secrets["auth_uri"],
-        "token_uri": st.secrets["token_uri"],
-        "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
-        "client_x509_cert_url": st.secrets["client_x509_cert_url"],
-        "universe_domain": st.secrets.get("universe_domain", "googleapis.com"),
-    }
-    creds = service_account.Credentials.from_service_account_info(
-        service_account_info, scopes=SCOPES
-    )
-    return build("drive", "v3", credentials=creds)
 def subir_archivo_a_drive(file_path, file_name):
     """Sube un archivo local a la carpeta de Google Drive manejando restricciones."""
     try:
@@ -533,167 +487,4 @@ if menu == "Nueva Factura (Individual/Lote)":
             st.warning("El archivo local no está disponible para previsualizar.")
 
         with col_form:
-          with st.form(key=f"form_{safe_filename}"):
-            f_fecha = st.date_input("Fecha", value=fecha_valida)
-            f_proveedor = st.text_input(
-                "Proveedor", value=str(datos.get("proveedor", ""))
-            )
-            cat_detectada = str(datos.get("categoria", "Materiales"))
-            categorias_validas = [
-                "Materiales",
-                "Transporte",
-                "Herramientas",
-                "Varios",
-            ]
-            index_cat = (
-                categorias_validas.index(cat_detectada)
-                if cat_detectada in categorias_validas
-                else 0
-            )
-            f_categoria = st.selectbox(
-                "Categoria", categorias_validas, index=index_cat
-            )
-
-            f_base = st.number_input(
-                "Base Imponible (EUR)",
-                value=float(datos.get("base_imponible") or 0.00),
-                format="%.2f",
-            )
-            f_iva_p = st.number_input(
-                "IVA (%)",
-                value=float(datos.get("iva_porcentaje") or 21.0),
-                format="%.1f",
-            )
-            f_cuota = st.number_input(
-                "Cuota IVA (EUR)",
-                value=float(datos.get("cuota_iva") or 0.00),
-                format="%.2f",
-            )
-            f_total = st.number_input(
-                "Total (EUR)",
-                value=float(datos.get("total") or 0.00),
-                format="%.2f",
-            )
-
-            submitted = st.form_submit_button("Guardar Factura en Excel")
-            if submitted:
-              if not os.path.exists(file_path) and file_bytes:
-                with open(file_path, "wb") as f:
-                  f.write(file_bytes)
-
-              wb = openpyxl.load_workbook(EXCEL_FILE)
-              ws = wb.active
-              nuevo_id = ws.max_row
-              origen_etiqueta = (
-                  "WhatsApp"
-                  if origen_seleccionado == "WhatsApp / PDF Masivo"
-                  else "Manual/Camara"
-              )
-
-              ws.append([
-                  nuevo_id,
-                  str(f_fecha),
-                  f_proveedor,
-                  origen_etiqueta,
-                  f_categoria,
-                  f_base,
-                  f_iva_p,
-                  f_cuota,
-                  f_total,
-                  safe_filename,
-              ])
-              wb.save(EXCEL_FILE)
-
-              subir_archivo_a_drive(file_path, safe_filename)
-              subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
-
-              del st.session_state[key]
-              st.success(
-                  f"Factura de {f_proveedor} guardada en Excel con exito."
-              )
-              time.sleep(1)
-              st.rerun()
-
-# 2. OPCION: LISTADO Y EDICION INTERACTIVA
-elif menu == "Listado y Edicion Interactiva":
-  st.header("Listado, Edicion y Registro de Facturas")
-  if os.path.exists(EXCEL_FILE):
-    df = pd.read_excel(EXCEL_FILE)
-    if not df.empty:
-      st.markdown(
-          "Puedes **editar valores directamente en la tabla** o seleccionar las"
-          " casillas para guardar o eliminar filas."
-      )
-
-      edited_df = st.data_editor(
-          df,
-          num_rows="dynamic",
-          use_container_width=True,
-          key="tabla_interactiva",
-      )
-
-      if st.button("Guardar Cambios Realizados en la Tabla"):
-        edited_df.to_excel(EXCEL_FILE, index=False)
-        subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
-        st.success("El archivo Excel ha sido actualizado correctamente!")
-        time.sleep(1)
-        st.rerun()
-
-      st.divider()
-      st.subheader("Visor de Archivo Guardado")
-      archivos_disponibles = [
-          f for f in df["Archivo Original"].dropna().unique()
-      ]
-      if archivos_disponibles:
-        archivo_sel = st.selectbox(
-            "Selecciona una factura para consultar el documento:",
-            archivos_disponibles,
-        )
-        ruta_archivo = os.path.join(PDF_DIR, archivo_sel)
-        mostrar_archivo_inteligente(ruta_archivo, archivo_sel)
-    else:
-      st.info("No hay facturas registradas todavia.")
-  else:
-    st.info("El archivo Excel aun no ha sido creado.")
-
-# 3. OPCION: RESUMEN TRIMESTRAL Y EXPORTACION COMPLETA
-elif menu == "Resumen Trimestral y Exportacion":
-  st.header("Resumen Trimestral, IVA Soportado y Exportacion")
-  if os.path.exists(EXCEL_FILE):
-    df = pd.read_excel(EXCEL_FILE)
-    if not df.empty:
-      total_base = df["Base Imponible"].sum()
-      total_iva = df["Cuota IVA"].sum()
-      total_general = df["Total"].sum()
-
-      col1, col2, col3 = st.columns(3)
-      col1.metric("Base Imponible Total", f"{total_base:.2f} EUR")
-      col2.metric("IVA Soportado Total", f"{total_iva:.2f} EUR")
-      col3.metric("Gasto Total", f"{total_general:.2f} EUR")
-
-      st.subheader("Desglose por Categoria")
-      col_cat = "Categoria" if "Categoria" in df.columns else "Categoría"
-      resumen_cat = (
-          df.groupby(col_cat)[["Base Imponible", "Cuota IVA", "Total"]]
-          .sum()
-          .reset_index()
-      )
-      st.dataframe(resumen_cat, use_container_width=True)
-
-      st.divider()
-      st.subheader("Exportacion de Informes")
-
-      with open(EXCEL_FILE, "rb") as f:
-        excel_bytes = f.read()
-
-      st.download_button(
-          label="Descargar Excel de Registro de Facturas (.xlsx)",
-          data=excel_bytes,
-          file_name=f"registro_facturas_{datetime.now().strftime('%Y%m%d')}.xlsx",
-          mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          type="primary",
-      )
-    else:
-      st.info("Aun no hay datos para resumir.")
-  else:
-    st.info("No hay registros disponibles.")
+          with st.
