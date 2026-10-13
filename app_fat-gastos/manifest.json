@@ -3,7 +3,7 @@
   "name": "Streamlit",
   "icons": [
     {
-      "src": "favicon_512.png",
+      "src": "logo.png",
       "type": "image/png",
       "sizes": "512x512"
     }
