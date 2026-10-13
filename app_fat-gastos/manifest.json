@@ -3,7 +3,7 @@
   "name": "Streamlit",
   "icons": [
     {
-      "src": "logo.png",
+      "src": "https://github.com/jhonattanalvarezk-pixel/APP-EXPENSES/blob/main/app_fat-gastos/logo.png?raw=true",
       "type": "image/png",
       "sizes": "512x512"
     }
