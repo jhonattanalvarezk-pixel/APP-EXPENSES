@@ -1,22 +1,15 @@
 {
-  "name": "Gestión de Facturas Pro",
-  "short_name": "FacturasApp",
-  "start_url": "https://app-expenses.streamlit.app/",
-  "display": "standalone",
-  "background_color": "#0F172A",
-  "theme_color": "#2563EB",
+  "short_name": "Streamlit",
+  "name": "Streamlit",
   "icons": [
     {
-      "src": "https://raw.githubusercontent.com/jhonattanalvarezk-pixel/APP-EXPENSES/main/app/_fat-gastos/logo.png",
-      "sizes": "192x192",
+      "src": "favicon_512.png",
       "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "https://raw.githubusercontent.com/jhonattanalvarezk-pixel/APP-EXPENSES/main/app/_fat-gastos/logo.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "sizes": "512x512"
     }
-  ]
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff"
 }
