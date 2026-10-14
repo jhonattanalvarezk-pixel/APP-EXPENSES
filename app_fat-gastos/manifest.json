@@ -7,13 +7,13 @@
   "theme_color": "#2563EB",
   "icons": [
     {
-      "src": "https://github.com/jhonattanalvarezk-pixel/APP-EXPENSES/blob/main/logo.png?raw=true",
+      "src": "https://raw.githubusercontent.com/jhonattanalvarezk-pixel/APP-EXPENSES/main/app\_fat-gastos/logo.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://raw.githubusercontent.com/tu-usuario/tu-repositorio/main/logo.png",
+      "src": "https://raw.githubusercontent.com/jhonattanalvarezk-pixel/APP-EXPENSES/main/app\_fat-gastos/logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
