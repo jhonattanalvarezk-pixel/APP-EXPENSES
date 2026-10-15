@@ -199,14 +199,11 @@ st.markdown(
         padding: 20px;
         border-radius: 12px;
     }
-    /* Contenedor compacto para imágenes largas de tickets y facturas estilo OkTicket */
     [data-testid="stImage"] img {
         border-radius: 10px;
-        max-height: 380px;
+        max-height: 400px;
         object-fit: contain;
         background-color: #0B0F19;
-        margin: auto;
-        display: block;
     }
     </style>
 """,
@@ -344,7 +341,7 @@ def extraer_datos_factura(file_bytes, mime_type, api_key):
 # --- CABECERA PRINCIPAL ---
 col_head1, col_head2 = st.columns([0.8, 0.2])
 with col_head1:
-  st.title("Gestor de Facturas y Gastos Pro")
+  st.title("Gestión de Facturas Pro")
 with col_head2:
   if os.path.exists(LOGO_PATH):
     st.image(LOGO_PATH, width=120)
@@ -362,10 +359,8 @@ menu = st.sidebar.selectbox(
 if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
-  st.markdown("📂 **Centro de Captura:** Sube o toma fotos de tus tickets y facturas. El sistema los comprimirá y organizará automáticamente.")
-
   uploaded_files = st.file_uploader(
-      "Toca aquí para Tomar Foto, abrir la Cámara, seleccionar de la Galería o subir PDFs",
+      "Sube o captura tus imágenes y documentos PDF",
       type=["png", "jpg", "jpeg", "webp", "pdf"],
       accept_multiple_files=True,
       key="selector_universal_facturas"
@@ -496,46 +491,42 @@ if menu == "Nueva Factura (Individual/Lote)":
 
       with st.expander(f"Confirmar datos: {safe_filename.split('_', 2)[-1]}", expanded=True):
         
-        # --- DISEÑO ESTILO OKTICKET: Imagen compacta arriba y selector de tipo ---
-        col_img_center = st.columns([1, 2, 1])
-        with col_img_center[1]:
-          if os.path.exists(file_path):
-            if safe_filename.lower().endswith(".pdf"):
-              st.info("📄 Documento PDF convertido:")
-              with open(file_path, "rb") as f:
-                pdf_bytes = f.read()
-              st.download_button(
-                  label="📥 Descargar PDF original",
-                  data=pdf_bytes,
-                  file_name=safe_filename,
-                  mime="application/pdf",
-                  key=f"dl_local_{safe_filename}",
-                  type="primary"
-              )
-              try:
-                import fitz
-                doc = fitz.open(file_path)
-                page = doc[0]
-                pix = page.get_pixmap(dpi=150)
-                img_path = file_path + ".png"
-                pix.save(img_path)
-                st.image(img_path, caption="", use_container_width=True)
-              except Exception:
-                st.warning("No se pudo generar la vista previa del PDF.")
-            else:
-              st.image(file_path, caption="", use_container_width=True)
+        # Previsualización segura sin desajustes
+        if os.path.exists(file_path):
+          if safe_filename.lower().endswith(".pdf"):
+            st.info("📄 Documento PDF convertido:")
+            with open(file_path, "rb") as f:
+              pdf_bytes = f.read()
+            st.download_button(
+                label="📥 Descargar PDF original",
+                data=pdf_bytes,
+                file_name=safe_filename,
+                mime="application/pdf",
+                key=f"dl_local_{safe_filename}",
+                type="primary"
+            )
+            try:
+              import fitz
+              doc = fitz.open(file_path)
+              page = doc[0]
+              pix = page.get_pixmap(dpi=150)
+              img_path = file_path + ".png"
+              pix.save(img_path)
+              st.image(img_path, use_container_width=True)
+            except Exception:
+              st.warning("No se pudo generar la vista previa del PDF.")
           else:
-            st.warning("El archivo local no está disponible.")
+            st.image(file_path, use_container_width=True)
+        else:
+          st.warning("El archivo local no está disponible.")
 
         st.divider()
 
         with st.form(key=f"form_{safe_filename}"):
-          # Selector estilo pastilla de Ticket o Factura
           tipo_comprobante = st.radio(
               "Tipo de documento",
               ["Ticket", "Factura"],
-              horizontal=True,
-              label_visibility="collapsed"
+              horizontal=True
           )
 
           col1, col2 = st.columns(2)
