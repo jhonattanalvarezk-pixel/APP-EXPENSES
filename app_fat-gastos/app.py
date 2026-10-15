@@ -442,8 +442,6 @@ if menu == "Nueva Factura (Individual/Lote)":
               f.write(file_bytes)
 
           nuevo_id = ws.max_row
-          # ORDEN ESTRICTO Y CORREGIDO DE LAS 11 COLUMNAS:
-          # 0: ID, 1: Fecha, 2: Proveedor, 3: Nº Factura, 4: Origen, 5: Categoria, 6: Base Imponible, 7: IVA (%), 8: Cuota IVA, 9: Total, 10: Archivo Original
           ws.append([
               nuevo_id,
               str(datos.get("fecha", datetime.now().strftime("%Y-%m-%d"))),
@@ -495,106 +493,4 @@ if menu == "Nueva Factura (Individual/Lote)":
         with col_visor:
           st.markdown("**📸 Previsualización del Documento**")
           if os.path.exists(file_path):
-            if safe_filename.lower().endswith(".pdf"):
-              st.info("📄 Documento PDF convertido para previsualización:")
-              with open(file_path, "rb") as f:
-                pdf_bytes = f.read()
-              st.download_button(
-                  label="📥 Descargar PDF original",
-                  data=pdf_bytes,
-                  file_name=safe_filename,
-                  mime="application/pdf",
-                  key=f"dl_local_{safe_filename}",
-                  type="primary"
-              )
-              try:
-                import fitz
-                doc = fitz.open(file_path)
-                page = doc[0]
-                pix = page.get_pixmap(dpi=150)
-                img_path = file_path + ".png"
-                pix.save(img_path)
-                st.image(img_path, caption="Vista previa de la factura (PDF)", use_container_width=True)
-              except Exception:
-                st.warning("No se pudo generar la vista previa automática del PDF.")
-            else:
-              st.image(file_path, caption="Ticket optimizado para lectura", use_container_width=True)
-          else:
-            st.warning("El archivo local no está disponible para previsualizar.")
-
-        with col_form:
-          with st.form(key=f"form_{safe_filename}"):
-            f_num_factura = st.text_input("Nº de Factura", value=str(datos.get("numero_factura", "S/N")))
-            f_fecha = st.date_input("Fecha", value=fecha_valida)
-            f_proveedor = st.text_input(
-                "Proveedor", value=str(datos.get("proveedor", ""))
-            )
-            cat_detectada = str(datos.get("categoria", "Materiales"))
-            categorias_validas = [
-                "Materiales",
-                "Transporte",
-                "Herramientas",
-                "Varios",
-            ]
-            index_cat = (
-                categorias_validas.index(cat_detectada)
-                if cat_detectada in categorias_validas
-                else 0
-            )
-            f_categoria = st.selectbox(
-                "Categoría", categorias_validas, index=index_cat
-            )
-
-            f_base = st.number_input(
-                "Base Imponible (EUR)",
-                value=float(datos.get("base_imponible") or 0.00),
-                format="%.2f",
-            )
-            f_iva_p = st.number_input(
-                "IVA (%)",
-                value=float(datos.get("iva_porcentaje") or 21.0),
-                format="%.1f",
-            )
-            f_cuota = st.number_input(
-                "Cuota IVA (EUR)",
-                value=float(datos.get("cuota_iva") or 0.00),
-                format="%.2f",
-            )
-            f_total = st.number_input(
-                "Total (EUR)",
-                value=float(datos.get("total") or 0.00),
-                format="%.2f",
-            )
-
-            submitted = st.form_submit_button("Guardar Factura en Excel")
-            if submitted:
-              if not os.path.exists(file_path) and file_bytes:
-                with open(file_path, "wb") as f:
-                  f.write(file_bytes)
-
-              wb = openpyxl.load_workbook(EXCEL_FILE)
-              ws = wb.active
-              nuevo_id = ws.max_row
-              
-              # ORDEN ESTRICTO Y CORREGIDO DE LAS 11 COLUMNAS AL GUARDAR INDIVIDUAL:
-              ws.append([
-                  nuevo_id,
-                  str(f_fecha),
-                  f_proveedor,
-                  f_num_factura,
-                  "Cámara / Archivo Móvil",
-                  f_categoria,
-                  f_base,
-                  f_iva_p,
-                  f_cuota,
-                  f_total,
-                  safe_filename,
-              ])
-              wb.save(EXCEL_FILE)
-
-              subir_archivo_a_drive(file_path, safe_filename)
-              subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
-
-              del st.session_state[key]
-              st.success(
-                  f"Factura
+            if safe_filename.
