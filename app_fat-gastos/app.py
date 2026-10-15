@@ -256,23 +256,18 @@ def limpiar_json_string(texto: str) -> str:
   texto = re.sub(r"```$", "", texto, flags=re.MULTILINE)
   return texto.strip()
 
-def verificar_factura_duplicada(num_factura, proveedor):
-    """Comprueba en el Excel si ya existe una factura con el mismo número y proveedor."""
-    if not os.path.exists(EXCEL_FILE) or not num_factura or num_factura.lower() in ["", "desconocido", "s/n", "ninguno"]:
+def verificar_factura_duplicada(num_factura):
+    """Comprueba en el Excel si ya existe una factura con el mismo número."""
+    if not os.path.exists(EXCEL_FILE) or not num_factura or str(num_factura).strip().lower() in ["", "desconocido", "s/n", "ninguno"]:
         return False
     try:
         df = pd.read_excel(EXCEL_FILE)
         if df.empty or "Nº Factura" not in df.columns:
             return False
         
-        # Normalizar para comparar sin espacios ni mayúsculas
         num_limpio = str(num_factura).strip().lower()
-        prov_limpio = str(proveedor).strip().lower()
-        
         for _, row in df.iterrows():
             f_num = str(row.get("Nº Factura", "")).strip().lower()
-            f_prov = str(row.get("Proveedor", "")).strip().lower()
-            
             if f_num == num_limpio and f_num != "":
                 return True
     except Exception as e:
@@ -353,7 +348,7 @@ menu = st.sidebar.selectbox(
 if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
-  st.markdown("📂 **Centro de Captura:** Sube o toma fotos de tus tickets y facturas. El sistema detectará automáticamente si ya están registradas para evitar duplicados.")
+  st.markdown("📂 **Centro de Captura:** Sube o toma fotos de tus tickets y facturas. El sistema validará si ya existen antes de guardar cualquier archivo.")
 
   uploaded_files = st.file_uploader(
       "Toca aquí para Tomar Foto, abrir la Cámara, seleccionar de la Galería o subir PDFs",
@@ -390,6 +385,7 @@ if menu == "Nueva Factura (Individual/Lote)":
           mime_type = uploaded_file.type
 
           try:
+            # 1. Primero extraemos los datos con IA antes de guardar nada
             json_str = extraer_datos_factura(file_bytes, mime_type, api_key)
             json_str_limpio = limpiar_json_string(json_str)
             datos = json.loads(json_str_limpio)
@@ -397,11 +393,12 @@ if menu == "Nueva Factura (Individual/Lote)":
             num_factura_detectado = datos.get("numero_factura", "S/N")
             proveedor_detectado = datos.get("proveedor", "Desconocido")
 
-            # VALIDACION DE DUPLICADOS
-            if verificar_factura_duplicada(num_factura_detectado, proveedor_detectado):
-              st.error(f"⚠️ **Factura Duplicada Bloqueada:** La factura número **'{num_factura_detectado}'** del proveedor **'{proveedor_detectado}'** ya se encuentra registrada en el sistema.")
+            # 2. VALIDACION DE DUPLICADOS (Si ya existe, se rechaza y no se guarda ningún archivo)
+            if verificar_factura_duplicada(num_factura_detectado):
+              st.error(f"⚠️ **Factura Duplicada Bloqueada:** El número de factura **'{num_factura_detectado}'** ({proveedor_detectado}) ya está registrado en el sistema. No se guardará ningún archivo.")
               continue
 
+            # 3. Solo si pasa la validación, procedemos a guardar el archivo localmente
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             safe_filename = f"{timestamp}_{uploaded_file.name}"
             file_path = os.path.join(PDF_DIR, safe_filename)
@@ -683,3 +680,7 @@ elif menu == "Resumen Trimestral y Exportación":
           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           type="primary",
       )
+    else:
+      st.info("Aún no hay datos para resumir.")
+  else:
+    st.info("No hay registros disponibles.")
