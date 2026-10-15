@@ -493,4 +493,198 @@ if menu == "Nueva Factura (Individual/Lote)":
         with col_visor:
           st.markdown("**📸 Previsualización del Documento**")
           if os.path.exists(file_path):
-            if safe_filename.
+            if safe_filename.lower().endswith(".pdf"):
+              st.info("📄 Documento PDF convertido para previsualización:")
+              with open(file_path, "rb") as f:
+                pdf_bytes = f.read()
+              st.download_button(
+                  label="📥 Descargar PDF original",
+                  data=pdf_bytes,
+                  file_name=safe_filename,
+                  mime="application/pdf",
+                  key=f"dl_local_{safe_filename}",
+                  type="primary"
+              )
+              try:
+                import fitz
+                doc = fitz.open(file_path)
+                page = doc[0]
+                pix = page.get_pixmap(dpi=150)
+                img_path = file_path + ".png"
+                pix.save(img_path)
+                st.image(img_path, caption="Vista previa de la factura (PDF)", use_container_width=True)
+              except Exception:
+                st.warning("No se pudo generar la vista previa automática del PDF.")
+            else:
+              st.image(file_path, caption="Ticket optimizado para lectura", use_container_width=True)
+          else:
+            st.warning("El archivo local no está disponible para previsualizar.")
+
+        with col_form:
+          with st.form(key=f"form_{safe_filename}"):
+            f_num_factura = st.text_input("Nº de Factura", value=str(datos.get("numero_factura", "S/N")))
+            f_fecha = st.date_input("Fecha", value=fecha_valida)
+            f_proveedor = st.text_input(
+                "Proveedor", value=str(datos.get("proveedor", ""))
+            )
+            cat_detectada = str(datos.get("categoria", "Materiales"))
+            categorias_validas = [
+                "Materiales",
+                "Transporte",
+                "Herramientas",
+                "Varios",
+            ]
+            index_cat = (
+                categorias_validas.index(cat_detectada)
+                if cat_detectada in categorias_validas
+                else 0
+            )
+            f_categoria = st.selectbox(
+                "Categoría", categorias_validas, index=index_cat
+            )
+
+            f_base = st.number_input(
+                "Base Imponible (EUR)",
+                value=float(datos.get("base_imponible") or 0.00),
+                format="%.2f",
+            )
+            f_iva_p = st.number_input(
+                "IVA (%)",
+                value=float(datos.get("iva_porcentaje") or 21.0),
+                format="%.1f",
+            )
+            f_cuota = st.number_input(
+                "Cuota IVA (EUR)",
+                value=float(datos.get("cuota_iva") or 0.00),
+                format="%.2f",
+            )
+            f_total = st.number_input(
+                "Total (EUR)",
+                value=float(datos.get("total") or 0.00),
+                format="%.2f",
+            )
+
+            submitted = st.form_submit_button("Guardar Factura en Excel")
+            if submitted:
+              if not os.path.exists(file_path) and file_bytes:
+                with open(file_path, "wb") as f:
+                  f.write(file_bytes)
+
+              wb = openpyxl.load_workbook(EXCEL_FILE)
+              ws = wb.active
+              nuevo_id = ws.max_row
+              ws.append([
+                  nuevo_id,
+                  str(f_fecha),
+                  f_proveedor,
+                  f_num_factura,
+                  "Cámara / Archivo Móvil",
+                  f_categoria,
+                  f_base,
+                  f_iva_p,
+                  f_cuota,
+                  f_total,
+                  safe_filename,
+              ])
+              wb.save(EXCEL_FILE)
+
+              subir_archivo_a_drive(file_path, safe_filename)
+              subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
+
+              del st.session_state[key]
+              st.success(
+                  f"Factura de {f_proveedor} guardada en Excel con éxito."
+              )
+              time.sleep(1)
+              st.rerun()
+
+# 2. OPCION: LISTADO Y EDICION INTERACTIVA
+elif menu == "Listado y Edición Interactiva":
+  st.header("Listado, Edición y Registro de Facturas")
+  if os.path.exists(EXCEL_FILE):
+    df = pd.read_excel(EXCEL_FILE)
+    if not df.empty:
+      st.markdown(
+          "Puedes **editar valores directamente en la tabla** o seleccionar las"
+          " casillas para guardar o eliminar filas."
+      )
+
+      edited_df = st.data_editor(
+          df,
+          num_rows="dynamic",
+          use_container_width=True,
+          key="tabla_interactiva",
+      )
+
+      if st.button("Guardar Cambios Realizados en la Tabla"):
+        edited_df.to_excel(EXCEL_FILE, index=False)
+        subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
+        st.success("¡El archivo Excel ha sido actualizado correctamente!")
+        time.sleep(1)
+        st.rerun()
+
+      st.divider()
+      st.subheader("Visor de Archivo Guardado")
+      
+      archivos_disponibles = []
+      if "Archivo Original" in df.columns:
+          archivos_disponibles = [
+              str(f) for f in df["Archivo Original"].dropna().unique() 
+              if isinstance(f, (str, bytes)) and str(f).strip() != "" and str(f).lower() != "nan"
+          ]
+
+      if archivos_disponibles:
+        archivo_sel = st.selectbox(
+            "Selecciona una factura para consultar el documento:",
+            archivos_disponibles,
+        )
+        ruta_archivo = os.path.join(PDF_DIR, archivo_sel)
+        mostrar_archivo_inteligente(ruta_archivo, archivo_sel)
+      else:
+        st.info("No hay archivos originales vinculados disponibles en los registros.")
+    else:
+      st.info("No hay facturas registradas todavía.")
+  else:
+    st.info("El archivo Excel aún no ha sido creado.")
+
+# 3. OPCION: RESUMEN TRIMESTRAL Y EXPORTACION COMPLETA
+elif menu == "Resumen Trimestral y Exportación":
+  st.header("Resumen Trimestral, IVA Soportado y Exportación")
+  if os.path.exists(EXCEL_FILE):
+    df = pd.read_excel(EXCEL_FILE)
+    if not df.empty:
+      total_base = df["Base Imponible"].sum()
+      total_iva = df["Cuota IVA"].sum()
+      total_general = df["Total"].sum()
+
+      col1, col2, col3 = st.columns(3)
+      col1.metric("Base Imponible Total", f"{total_base:.2f} EUR")
+      col2.metric("IVA Soportado Total", f"{total_iva:.2f} EUR")
+      col3.metric("Gasto Total", f"{total_general:.2f} EUR")
+
+      st.subheader("Desglose por Categoría")
+      col_cat = "Categoria" if "Categoria" in df.columns else "Categoría"
+      resumen_cat = (
+          df.groupby(col_cat)[["Base Imponible", "Cuota IVA", "Total"]]
+          .sum()
+          .reset_index()
+      )
+      st.dataframe(resumen_cat, use_container_width=True)
+
+      st.divider()
+      st.subheader("Exportación de Informes")
+
+      with open(EXCEL_FILE, "rb") as f:
+        excel_bytes = f.read()
+
+      st.download_button(
+          label="Descargar Excel de Registro de Facturas (.xlsx)",
+          data=excel_bytes,
+          file_name=f"registro_facturas_{datetime.now().strftime('%Y%m%d')}.xlsx",
+          mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          type="primary",
+      )
+    else:
+      st.info("Aún no hay datos para resumir.")
+  else:
+    st.info("No hay registros disponibles.")
