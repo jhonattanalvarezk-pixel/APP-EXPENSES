@@ -117,7 +117,6 @@ def aclarar_y_optimizar_imagen(image_bytes):
 
 st.set_page_config(page_title="Gestión de Facturas Pro", page_icon="🧾", layout="wide")
 
-# CSS limpio y profesional sin alterar los componentes internos
 st.markdown("""
     <style>
     .stApp { background-color: #0F172A; color: #F8FAFC; }
@@ -183,12 +182,14 @@ def extraer_datos_factura(file_bytes, mime_type, api_key):
       while uploaded_file.state.name == "PROCESSING":
         time.sleep(1)
         uploaded_file = client.files.get(name=uploaded_file.name)
+
     response = client.models.generate_content(
-        model= ["gemini-2.5-flash", "gemini-2.0-flash"]
+        model="gemini-2.5-flash",
         contents=[uploaded_file, prompt],
         config=types.GenerateContentConfig(response_mime_type="application/json"),
     )
     return response.text
+
   finally:
     if os.path.exists(tmp_path):
       os.remove(tmp_path)
