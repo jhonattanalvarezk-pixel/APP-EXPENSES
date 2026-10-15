@@ -363,7 +363,6 @@ if menu == "Nueva Factura (Individual/Lote)":
     
     if cam_file is not None:
       bytes_originales = cam_file.getvalue()
-      # Aplicar aclaramiento automático de alto contraste optimizado para la IA
       bytes_mejorados = aclarar_y_optimizar_imagen(bytes_originales)
       
       class CapturedImage:
@@ -538,4 +537,73 @@ if menu == "Nueva Factura (Individual/Lote)":
 
         with col_form:
           with st.form(key=f"form_{safe_filename}"):
-            f_fecha = st.date_input("Fecha", value=fecha_valida
+            f_fecha = st.date_input("Fecha", value=fecha_valida)
+            f_proveedor = st.text_input(
+                "Proveedor", value=str(datos.get("proveedor", ""))
+            )
+            cat_detectada = str(datos.get("categoria", "Materiales"))
+            categorias_validas = [
+                "Materiales",
+                "Transporte",
+                "Herramientas",
+                "Varios",
+            ]
+            index_cat = (
+                categorias_validas.index(cat_detectada)
+                if cat_detectada in categorias_validas
+                else 0
+            )
+            f_categoria = st.selectbox(
+                "Categoría", categorias_validas, index=index_cat
+            )
+
+            f_base = st.number_input(
+                "Base Imponible (EUR)",
+                value=float(datos.get("base_imponible") or 0.00),
+                format="%.2f",
+            )
+            f_iva_p = st.number_input(
+                "IVA (%)",
+                value=float(datos.get("iva_porcentaje") or 21.0),
+                format="%.1f",
+            )
+            f_cuota = st.number_input(
+                "Cuota IVA (EUR)",
+                value=float(datos.get("cuota_iva") or 0.00),
+                format="%.2f",
+            )
+            f_total = st.number_input(
+                "Total (EUR)",
+                value=float(datos.get("total") or 0.00),
+                format="%.2f",
+            )
+
+            submitted = st.form_submit_button("Guardar Factura en Excel")
+            if submitted:
+              if not os.path.exists(file_path) and file_bytes:
+                with open(file_path, "wb") as f:
+                  f.write(file_bytes)
+
+              wb = openpyxl.load_workbook(EXCEL_FILE)
+              ws = wb.active
+              nuevo_id = ws.max_row
+              origen_etiqueta = "Cámara Escáner" if origen_seleccionado == "Cámara Escáner (Con Aclarado Automático)" else "Archivo / Documento"
+
+              ws.append([
+                  nuevo_id,
+                  str(f_fecha),
+                  f_proveedor,
+                  origen_etiqueta,
+                  f_categoria,
+                  f_base,
+                  f_iva_p,
+                  f_cuota,
+                  f_total,
+                  safe_filename,
+              ])
+              wb.save(EXCEL_FILE)
+
+              subir_archivo_a_drive(file_path, safe_filename)
+              subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
+
+              del st.session_state
