@@ -385,7 +385,6 @@ if menu == "Nueva Factura (Individual/Lote)":
           mime_type = uploaded_file.type
 
           try:
-            # 1. Primero extraemos los datos con IA antes de guardar nada
             json_str = extraer_datos_factura(file_bytes, mime_type, api_key)
             json_str_limpio = limpiar_json_string(json_str)
             datos = json.loads(json_str_limpio)
@@ -393,12 +392,10 @@ if menu == "Nueva Factura (Individual/Lote)":
             num_factura_detectado = datos.get("numero_factura", "S/N")
             proveedor_detectado = datos.get("proveedor", "Desconocido")
 
-            # 2. VALIDACION DE DUPLICADOS (Si ya existe, se rechaza y no se guarda ningún archivo)
             if verificar_factura_duplicada(num_factura_detectado):
-              st.error(f"⚠️ **Factura Duplicada Bloqueada:** El número de factura **'{num_factura_detectado}'** ({proveedor_detectado}) ya está registrado en el sistema. No se guardará ningún archivo.")
+              st.error(f"⚠️ **Factura Duplicada Bloqueada:** El número de factura **'{num_factura_detectado}'** del proveedor **'{proveedor_detectado}'** ya está registrado en el sistema. No se guardará ni descargará ningún archivo.")
               continue
 
-            # 3. Solo si pasa la validación, procedemos a guardar el archivo localmente
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             safe_filename = f"{timestamp}_{uploaded_file.name}"
             file_path = os.path.join(PDF_DIR, safe_filename)
@@ -445,6 +442,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               f.write(file_bytes)
 
           nuevo_id = ws.max_row
+          # ORDEN EXACTO DE COLUMNAS: ID, Fecha, Proveedor, Nº Factura, Origen, Categoria, Base Imponible, IVA (%), Cuota IVA, Total, Archivo Original
           ws.append([
               nuevo_id,
               str(datos.get("fecha", datetime.now().strftime("%Y-%m-%d"))),
@@ -576,6 +574,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               wb = openpyxl.load_workbook(EXCEL_FILE)
               ws = wb.active
               nuevo_id = ws.max_row
+              # ORDEN EXACTO DE COLUMNAS AL GUARDAR
               ws.append([
                   nuevo_id,
                   str(f_fecha),
