@@ -184,7 +184,7 @@ def extraer_datos_factura(file_bytes, mime_type, api_key):
         time.sleep(1)
         uploaded_file = client.files.get(name=uploaded_file.name)
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.8-flash","gemini-2.5-flash",
         contents=[uploaded_file, prompt],
         config=types.GenerateContentConfig(response_mime_type="application/json"),
     )
