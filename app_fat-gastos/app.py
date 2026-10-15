@@ -358,8 +358,10 @@ menu = st.sidebar.selectbox(
 if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
+  st.markdown("💡 **Consejo para móvil:** Al pulsar 'Browse files', tu teléfono te preguntará si deseas usar la **Cámara** (para hacer la foto al instante) o la **Galería/Archivos**. Usa **Cámara** para tomar el ticket; al guardarse como archivo estables, subirá y se procesará siempre de forma inmediata sin desconexiones.")
+
   uploaded_files = st.file_uploader(
-      "Toca para Tomar Foto, abrir Cámara o seleccionar PDFs/Imágenes",
+      "Toca aquí para seleccionar o capturar",
       type=["png", "jpg", "jpeg", "webp", "pdf"],
       accept_multiple_files=True,
       key="selector_universal_facturas"
