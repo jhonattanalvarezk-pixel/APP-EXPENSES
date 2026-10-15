@@ -19,7 +19,6 @@ from PIL import Image, ImageEnhance
 import streamlit.components.v1 as components
 
 def get_drive_service():
-    """Autentica con Google Drive usando las credenciales OAuth y el Refresh Token."""
     creds = Credentials(
         None,
         refresh_token=st.secrets["OAUTH_REFRESH_TOKEN"],
@@ -27,57 +26,38 @@ def get_drive_service():
         client_secret=st.secrets["OAUTH_CLIENT_SECRET"],
         token_uri="https://oauth2.googleapis.com/token",
     )
-    
     if not creds.valid:
         creds.refresh(Request())
-        
     return build("drive", "v3", credentials=creds)
 
 def subir_archivo_a_drive(file_path, file_name):
-    """Sube un archivo local a la carpeta de Google Drive."""
     try:
         service = get_drive_service()
         folder_id = st.secrets.get('DRIVE_FOLDER_ID')
-        
         query = f"name = '{file_name}' and '{folder_id}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id)").execute()
         files = results.get("files", [])
-        
         media = MediaFileUpload(file_path, resumable=True)
         if files:
             file_id = files[0]['id']
-            file = service.files().update(
-                fileId=file_id,
-                media_body=media
-            ).execute()
+            file = service.files().update(fileId=file_id, media_body=media).execute()
         else:
-            file_metadata = {
-                'name': file_name,
-                'parents': [folder_id]
-            }
-            file = service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields='id'
-            ).execute()
+            file_metadata = {'name': file_name, 'parents': [folder_id]}
+            file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         return file.get('id')
     except Exception as e:
         print(f"Error Drive: {e}")
         return None
 
 def descargar_archivo_de_drive(nombre_archivo, destino_path):
-    """Busca el archivo por su nombre en Google Drive y lo descarga a local si no existe."""
     try:
         service = get_drive_service()
         folder_id = st.secrets.get('DRIVE_FOLDER_ID')
-        
         query = f"name = '{nombre_archivo}' and '{folder_id}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id, name)").execute()
         files = results.get("files", [])
-        
         if not files:
             return False
-            
         file_id = files[0]['id']
         request = service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
@@ -85,145 +65,85 @@ def descargar_archivo_de_drive(nombre_archivo, destino_path):
         done = False
         while not done:
             status, done = downloader.next_chunk()
-            
         fh.seek(0)
         with open(destino_path, "wb") as f:
             f.write(fh.read())
         return True
     except Exception as e:
-        print(f"Error descargando desde Google Drive: {e}")
+        print(f"Error descargando: {e}")
         return False
 
 def mostrar_archivo_inteligente(file_path, archivo_nombre):
-    """Muestra la imagen o PDF convertido directamente en pantalla con un contenedor limpio."""
     if not os.path.exists(file_path):
         with st.spinner("Recuperando documento..."):
             encontrado = descargar_archivo_de_drive(archivo_nombre, file_path)
             if not encontrado:
                 st.error("El archivo no se encuentra disponible localmente.")
                 return
-
     if archivo_nombre.lower().endswith(".pdf"):
         try:
             with open(file_path, "rb") as f:
                 pdf_bytes = f.read()
-            
-            st.download_button(
-                label="📥 Descargar / Abrir PDF original",
-                data=pdf_bytes,
-                file_name=archivo_nombre,
-                mime="application/pdf",
-                key=f"dl_visor_{archivo_nombre}",
-                type="primary"
-            )
-            
+            st.download_button("📥 Descargar PDF original", data=pdf_bytes, file_name=archivo_nombre, mime="application/pdf", type="primary")
             import fitz
             doc = fitz.open(file_path)
             page = doc[0]
             pix = page.get_pixmap(dpi=150)
             img_path = file_path + "_vis.png"
             pix.save(img_path)
-            st.image(img_path, caption="Vista previa del documento guardado", use_container_width=True)
-            
+            st.image(img_path, use_container_width=True)
         except Exception as e:
-            st.error(f"No se pudo renderizar la vista previa del PDF: {e}")
+            st.error(f"Error en PDF: {e}")
     else:
-        st.image(file_path, caption="Documento / Ticket", use_container_width=True)
+        st.image(file_path, use_container_width=True)
 
 def aclarar_y_optimizar_imagen(image_bytes):
-    """Comprime, redimensiona y aplica alto contraste automáticamente."""
     try:
         img = Image.open(io.BytesIO(image_bytes))
-        
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
-            
         max_width = 1200
         if img.width > max_width:
             w_percent = (max_width / float(img.width))
             h_size = int(float(img.height) * float(w_percent))
             img = img.resize((max_width, h_size), Image.Resampling.LANCZOS)
-            
-        enhancer_contrast = ImageEnhance.Contrast(img)
-        img = enhancer_contrast.enhance(1.5)
-        
-        enhancer_sharpness = ImageEnhance.Sharpness(img)
-        img = enhancer_sharpness.enhance(1.6)
-        
+        img = ImageEnhance.Contrast(img).enhance(1.5)
+        img = ImageEnhance.Sharpness(img).enhance(1.6)
         output_io = io.BytesIO()
         img.save(output_io, format="JPEG", quality=85, optimize=True)
         return output_io.getvalue()
     except Exception:
         return image_bytes
 
-# Configuración de la página
-st.set_page_config(
-    page_title="Gestión de Facturas Pro", page_icon="🧾", layout="wide"
-)
+st.set_page_config(page_title="Gestión de Facturas Pro", page_icon="🧾", layout="wide")
 
-st.markdown(
-    """
+# CSS para limpiar por completo los textos largos y hacer la interfaz estilo app nativa
+st.markdown("""
     <style>
-    .stApp {
-        background-color: #0F172A;
-        color: #F8FAFC;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #1E293B !important;
-        border-right: 1px solid #334155;
-    }
-    [data-testid="stMetricValue"] {
-        font-size: 1.8rem !important;
-        font-weight: 700 !important;
-        color: #38BDF8 !important;
-    }
-    div[data-testid="metric-container"] {
-        background-color: #1E293B;
-        border: 1px solid #334155;
-        padding: 15px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
+    .stApp { background-color: #0F172A; color: #F8FAFC; }
+    [data-testid="stSidebar"] { background-color: #1E293B !important; }
     div.stButton > button[kind="primary"] {
         background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
-        color: white;
-        border-radius: 8px;
-        font-weight: 600;
-        border: none;
-        padding: 0.6rem 1.2rem;
+        color: white; border-radius: 8px; font-weight: 600; border: none; width: 100%;
     }
-    .stForm {
-        background-color: #1E293B;
-        border: 1px solid #334155 !important;
-        padding: 20px;
-        border-radius: 12px;
-    }
-    [data-testid="stImage"] img {
-        border-radius: 10px;
-        max-height: 400px;
-        object-fit: contain;
-        background-color: #0B0F19;
-    }
+    .stForm { background-color: #1E293B; border: 1px solid #334155 !important; border-radius: 12px; }
+    /* Ocultar textos molestos y rediseñar el uploader para que sea minimalista */
+    [data-testid="stFileUploader"] section { padding: 10px !important; background-color: #1E293B; border: 2px dashed #334155; border-radius: 10px; }
+    [data-testid="stFileUploader"] section div span { font-size: 0px !important; }
+    [data-testid="stFileUploader"] section div span::after { content: "📁 Toca aquí para elegir foto o PDF"; font-size: 14px; color: #38BDF8; font-weight: 600; }
+    [data-testid="stImage"] img { border-radius: 10px; max-height: 380px; object-fit: contain; background-color: #0B0F19; }
     </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 LOGO_PATH = "logo.png"
-
 if os.path.exists(LOGO_PATH):
   st.sidebar.image(LOGO_PATH, use_container_width=True)
-else:
-  st.sidebar.info(f"💡 Coloca tu archivo '{LOGO_PATH}' en la carpeta del app.")
 
 st.sidebar.title("Configuración")
-api_key = st.sidebar.text_input(
-    "Gemini API Key", type="password", value=os.environ.get("GEMINI_API_KEY", "")
-)
+api_key = st.sidebar.text_input("Gemini API Key", type="password", value=os.environ.get("GEMINI_API_KEY", ""))
 
 EXCEL_FILE = "registro_facturas.xlsx"
 PDF_DIR = "archivos_facturas"
-
 os.makedirs(PDF_DIR, exist_ok=True)
 
 def inicializar_excel():
@@ -231,20 +151,7 @@ def inicializar_excel():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Facturas"
-    headers = [
-        "ID",
-        "Fecha",
-        "Proveedor",
-        "Tipo",
-        "Origen",
-        "Categoria",
-        "Base Imponible",
-        "IVA (%)",
-        "Cuota IVA",
-        "Total",
-        "Archivo Original",
-    ]
-    ws.append(headers)
+    ws.append(["ID", "Fecha", "Proveedor", "Tipo", "Origen", "Categoria", "Base Imponible", "IVA (%)", "Cuota IVA", "Total", "Archivo Original"])
     wb.save(EXCEL_FILE)
 
 inicializar_excel()
@@ -257,22 +164,18 @@ def limpiar_json_string(texto: str) -> str:
 
 def extraer_datos_factura(file_bytes, mime_type, api_key):
   client = genai.Client(api_key=api_key)
-
   prompt = """
-    Analiza este documento de factura o ticket y extrae los siguientes datos en formato JSON estricto:
-    - fecha: Fecha de la factura en formato AAAA-MM-DD (si no se encuentra, pon la fecha actual).
-    - proveedor: Nombre de la tienda, empresa o emisor de la factura.
-    - categoria: Clasifica el gasto en una de estas opciones: Materiales, Transporte, Herramientas, Varios.
-    - base_imponible: Numero decimal con la base imponible total.
-    - iva_porcentaje: Numero entero o decimal con el tipo de IVA principal (ej: 21, 10, 4).
-    - cuota_iva: Numero decimal con el importe total del IVA.
-    - total: Numero decimal con el importe total de la factura.
-    
-    Devuelve UNICAMENTE un JSON valido con estas claves: fecha, proveedor, categoria, base_imponible, iva_porcentaje, cuota_iva, total.
+    Analiza este documento de factura o ticket y extrae en JSON estricto:
+    - fecha: AAAA-MM-DD (si no hay, fecha actual).
+    - proveedor: Nombre del emisor.
+    - categoria: Materiales, Transporte, Herramientas, Varios.
+    - base_imponible: Número decimal.
+    - iva_porcentaje: Número.
+    - cuota_iva: Número decimal.
+    - total: Número decimal.
+    Devuelve UNICAMENTE un JSON válido con estas claves.
     """
-
   ext = ".pdf" if "pdf" in mime_type else ".jpg"
-
   with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_file:
     tmp_file.write(file_bytes)
     tmp_path = tmp_file.name
@@ -280,422 +183,150 @@ def extraer_datos_factura(file_bytes, mime_type, api_key):
   uploaded_file = None
   try:
     uploaded_file = client.files.upload(file=tmp_path)
-
     if "pdf" in mime_type:
       while uploaded_file.state.name == "PROCESSING":
         time.sleep(1)
         uploaded_file = client.files.get(name=uploaded_file.name)
-
-      if uploaded_file.state.name == "FAILED":
-        raise Exception("Google Gemini no pudo procesar este archivo PDF.")
-
-    modelos = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-3.8-flash"]
-    ultimo_error = None
-
-    for modelo in modelos:
-      for intento in range(4):
-        try:
-          response = client.models.generate_content(
-              model=modelo,
-              contents=[uploaded_file, prompt],
-              config=types.GenerateContentConfig(
-                  response_mime_type="application/json"
-              ),
-          )
-          return response.text
-        except Exception as e:
-          ultimo_error = e
-          msg_error = str(e)
-
-          if "404" in msg_error or "NOT_FOUND" in msg_error:
-            break
-
-          if (
-              "503" in msg_error
-              or "UNAVAILABLE" in msg_error
-              or "RESOURCE_EXHAUSTED" in msg_error
-              or "429" in msg_error
-          ):
-            time.sleep(2**intento)
-            continue
-          else:
-            break
-
-    if ultimo_error:
-      raise ultimo_error
-
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[uploaded_file, prompt],
+        config=types.GenerateContentConfig(response_mime_type="application/json"),
+    )
+    return response.text
   finally:
     if os.path.exists(tmp_path):
       os.remove(tmp_path)
     if uploaded_file:
       try:
         client.files.delete(name=uploaded_file.name)
-      except Exception:
+      except:
         pass
 
-  raise Exception(
-      "Los servidores de Gemini estan con alta demanda. Reintentalo en unos instantes."
-  )
-
-# --- CABECERA PRINCIPAL ---
-col_head1, col_head2 = st.columns([0.8, 0.2])
-with col_head1:
+col_h1, col_h2 = st.columns([0.8, 0.2])
+with col_h1:
   st.title("Gestión de Facturas Pro")
-with col_head2:
-  if os.path.exists(LOGO_PATH):
-    st.image(LOGO_PATH, width=120)
 
-menu = st.sidebar.selectbox(
-    "Menú",
-    [
-        "Nueva Factura (Individual/Lote)",
-        "Listado y Edición Interactiva",
-        "Resumen Trimestral y Exportación",
-    ],
-)
+menu = st.sidebar.selectbox("Menú", ["Nueva Factura (Individual/Lote)", "Listado y Edición Interactiva", "Resumen Trimestral y Exportación"])
 
-# 1. OPCION: NUEVA FACTURA
 if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
-  st.markdown("💡 **Consejo para móvil:** Al pulsar 'Browse files', tu teléfono te preguntará si deseas usar la **Cámara** (para hacer la foto al instante) o la **Galería/Archivos**. Usa **Cámara** para tomar el ticket; al guardarse como archivo estables, subirá y se procesará siempre de forma inmediata sin desconexiones.")
+  # Uploader limpio sin textos molestos
+  uploaded_file = st.file_uploader("", type=["png", "jpg", "jpeg", "webp", "pdf"], key="u_unico")
 
-  uploaded_files = st.file_uploader(
-      "Toca aquí para seleccionar o capturar",
-      type=["png", "jpg", "jpeg", "webp", "pdf"],
-      accept_multiple_files=True,
-      key="selector_universal_facturas"
-  )
-
-  if uploaded_files:
+  if uploaded_file:
     if not api_key:
-      st.warning("Por favor, introduce tu Gemini API Key en la barra lateral.")
+      st.warning("⚠️ Introduce tu Gemini API Key en la barra lateral.")
     else:
-      if st.button("🚀 Procesar con IA ahora", type="primary"):
-        for uploaded_file in uploaded_files:
-          with st.spinner(f"Procesando {uploaded_file.name}..."):
-            try:
-              file_bytes = uploaded_file.getvalue()
-              mime_type = uploaded_file.type
+      if st.button("✨ Procesar con Inteligencia Artificial", type="primary"):
+        with st.spinner("Analizando documento..."):
+          try:
+            file_bytes = uploaded_file.getvalue()
+            mime_type = uploaded_file.type
 
-              if mime_type.startswith("image/"):
-                file_bytes = aclarar_y_optimizar_imagen(file_bytes)
-                mime_type = "image/jpeg"
+            if mime_type.startswith("image/"):
+              file_bytes = aclarar_y_optimizar_imagen(file_bytes)
+              mime_type = "image/jpeg"
 
-              timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-              safe_filename = f"{timestamp}_{uploaded_file.name}"
-              file_path = os.path.join(PDF_DIR, safe_filename)
-              
-              with open(file_path, "wb") as f:
-                f.write(file_bytes)
-
-              json_str = extraer_datos_factura(file_bytes, mime_type, api_key)
-              json_str_limpio = limpiar_json_string(json_str)
-              datos = json.loads(json_str_limpio)
-
-              st.session_state[f"datos_{safe_filename}"] = {
-                  "datos": datos,
-                  "safe_filename": safe_filename,
-                  "file_path": file_path,
-                  "mime_type": mime_type,
-                  "file_bytes": file_bytes,
-              }
-              st.success(f"¡Procesado con éxito: {uploaded_file.name}!")
-            except Exception as e:
-              st.error(f"Error procesando {uploaded_file.name}: {e}")
-        st.rerun()
-
-  keys_to_show = [
-      k for k in st.session_state.keys() if k.startswith("datos_")
-  ]
-
-  if keys_to_show:
-    st.divider()
-    st.subheader("Confirmar datos y guardar")
-
-    if len(keys_to_show) > 1:
-      if st.button(
-          f"Guardar TODAS ({len(keys_to_show)}) en Excel de golpe",
-          type="secondary",
-      ):
-        try:
-          wb = openpyxl.load_workbook(EXCEL_FILE)
-          ws = wb.active
-        except Exception:
-          wb = openpyxl.Workbook()
-          ws = wb.active
-
-        for key in list(keys_to_show):
-          item = st.session_state[key]
-          datos = item["datos"]
-          safe_filename = item["safe_filename"]
-          file_path = item["file_path"]
-          file_bytes = item.get("file_bytes")
-
-          if not os.path.exists(file_path) and file_bytes:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_filename = f"{timestamp}_{uploaded_file.name}"
+            file_path = os.path.join(PDF_DIR, safe_filename)
+            
             with open(file_path, "wb") as f:
               f.write(file_bytes)
 
-          nuevo_id = ws.max_row
-          ws.append([
-              nuevo_id,
-              str(datos.get("fecha", datetime.now().strftime("%Y-%m-%d"))),
-              str(datos.get("proveedor", "Desconocido")),
-              "Factura",
-              "Cámara / Archivo Móvil",
-              str(datos.get("categoria", "Materiales")),
-              float(datos.get("base_imponible") or 0.00),
-              float(datos.get("iva_porcentaje") or 21.0),
-              float(datos.get("cuota_iva") or 0.00),
-              float(datos.get("total") or 0.00),
-              safe_filename,
-          ])
-          
-          subir_archivo_a_drive(file_path, safe_filename)
-          del st.session_state[key]
+            json_str = extraer_datos_factura(file_bytes, mime_type, api_key)
+            datos = json.loads(limpiar_json_string(json_str))
 
-        wb.save(EXCEL_FILE)
-        subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
-        st.success("¡Todas las facturas del lote han sido guardadas en Excel!")
-        time.sleep(1)
-        st.rerun()
+            st.session_state["factura_actual"] = {
+                "datos": datos,
+                "safe_filename": safe_filename,
+                "file_path": file_path,
+                "file_bytes": file_bytes,
+            }
+            st.success("¡Procesado con éxito!")
+            st.rerun()
+          except Exception as e:
+            st.error(f"Error al procesar: {e}")
 
-    for key in keys_to_show:
-      item = st.session_state[key]
-      datos = item.get("datos", {})
-      
-      if isinstance(datos, list):
-          datos = datos[0] if len(datos) > 0 else {}
-          
-      safe_filename = item.get("safe_filename", "archivo.jpg")
-      file_path = item.get("file_path", "")
-      file_bytes = item.get("file_bytes")
+  if "factura_actual" in st.session_state:
+    item = st.session_state["factura_actual"]
+    datos = item["datos"]
+    safe_filename = item["safe_filename"]
+    file_path = item["file_path"]
+    file_bytes = item["file_bytes"]
 
-      if file_path and not os.path.exists(file_path) and file_bytes is not None:
-        try:
-          with open(file_path, "wb") as f:
-            f.write(file_bytes)
-        except Exception:
-          pass
+    if not os.path.exists(file_path) and file_bytes:
+      with open(file_path, "wb") as f:
+        f.write(file_bytes)
 
-      fecha_str = datos.get("fecha", "")
-      try:
-        fecha_valida = datetime.strptime(fecha_str, "%Y-%m-%d").date()
-      except (ValueError, TypeError):
-        fecha_valida = datetime.now().date()
+    st.divider()
+    st.subheader("Confirmar datos y guardar")
 
-      with st.expander(f"Confirmar datos: {safe_filename.split('_', 2)[-1]}", expanded=True):
-        
-        if file_path and os.path.exists(file_path):
-          if safe_filename.lower().endswith(".pdf"):
-            st.info("📄 Documento PDF convertido:")
-            try:
-              with open(file_path, "rb") as f:
-                pdf_bytes = f.read()
-              st.download_button(
-                  label="📥 Descargar PDF original",
-                  data=pdf_bytes,
-                  file_name=safe_filename,
-                  mime="application/pdf",
-                  key=f"dl_local_{safe_filename}",
-                  type="primary"
-              )
-              import fitz
-              doc = fitz.open(file_path)
-              page = doc[0]
-              pix = page.get_pixmap(dpi=150)
-              img_path = file_path + ".png"
-              pix.save(img_path)
-              st.image(img_path, use_container_width=True)
-            except Exception:
-              st.warning("No se pudo generar la vista previa del PDF.")
-          else:
-            st.image(file_path, use_container_width=True)
+    col_img, col_form = st.columns([1, 1])
+    with col_img:
+      if os.path.exists(file_path):
+        if safe_filename.lower().endswith(".pdf"):
+          st.info("📄 Documento PDF")
         else:
-          st.warning("El archivo local temporal se ha restablecido por bloqueo del teléfono. Por favor, vuelve a subir la foto si deseas consultarla aquí.")
+          st.image(file_path, use_container_width=True)
 
-        st.divider()
+    with col_form:
+      with st.form("form_confirmacion"):
+        tipo_comprobante = st.radio("Tipo", ["Ticket", "Factura"], horizontal=True)
+        f_proveedor = st.text_input("Proveedor", value=str(datos.get("proveedor", "")))
+        
+        try:
+          f_fecha = datetime.strptime(str(datos.get("fecha", "")), "%Y-%m-%d").date()
+        except:
+          f_fecha = datetime.now().date()
+        f_fecha = st.date_input("Fecha", value=f_fecha)
 
-        with st.form(key=f"form_{safe_filename}"):
-          tipo_comprobante = st.radio(
-              "Tipo de documento",
-              ["Ticket", "Factura"],
-              horizontal=True
-          )
+        f_total = st.number_input("Total (€)", value=float(datos.get("total") or 0.00), format="%.2f")
+        f_base = st.number_input("Base Imponible (€)", value=float(datos.get("base_imponible") or 0.00), format="%.2f")
+        f_iva_p = st.number_input("IVA (%)", value=float(datos.get("iva_porcentaje") or 21.0), format="%.1f")
+        f_cuota = st.number_input("Cuota IVA (€)", value=float(datos.get("cuota_iva") or 0.00), format="%.2f")
 
-          col1, col2 = st.columns(2)
-          with col1:
-            f_proveedor = st.text_input(
-                "Razón social / Proveedor", value=str(datos.get("proveedor", ""))
-            )
-            f_fecha = st.date_input("Fecha", value=fecha_valida)
-            cat_detectada = str(datos.get("categoria", "Materiales"))
-            categorias_validas = [
-                "Materiales",
-                "Transporte",
-                "Herramientas",
-                "Varios",
-            ]
-            index_cat = (
-                categorias_validas.index(cat_detectada)
-                if cat_detectada in categorias_validas
-                else 0
-            )
-            f_categoria = st.selectbox(
-                "Categoría", categorias_validas, index=index_cat
-            )
+        submitted = st.form_submit_button("GUARDAR EN EXCEL")
+        if submitted:
+          try:
+            wb = openpyxl.load_workbook(EXCEL_FILE)
+            ws = wb.active
+            ws.append([
+                ws.max_row, str(f_fecha), f_proveedor, tipo_comprobante, 
+                "Cámara Móvil", str(datos.get("categoria", "Materiales")), 
+                f_base, f_iva_p, f_cuota, f_total, safe_filename
+            ])
+            wb.save(EXCEL_FILE)
+            subir_archivo_a_drive(file_path, safe_filename)
+            subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
 
-          with col2:
-            f_total = st.number_input(
-                "Importe total (EUR)*",
-                value=float(datos.get("total") or 0.00),
-                format="%.2f",
-            )
-            f_base = st.number_input(
-                "Base Imponible (EUR)",
-                value=float(datos.get("base_imponible") or 0.00),
-                format="%.2f",
-            )
-            f_iva_p = st.number_input(
-                "IVA (%)",
-                value=float(datos.get("iva_porcentaje") or 21.0),
-                format="%.1f",
-            )
-            f_cuota = st.number_input(
-                "Cuota IVA (EUR)",
-                value=float(datos.get("cuota_iva") or 0.00),
-                format="%.2f",
-            )
+            del st.session_state["factura_actual"]
+            st.success("¡Guardado con éxito!")
+            time.sleep(1)
+            st.rerun()
+          except Exception as e:
+            st.error(f"Error al guardar: {e}")
 
-          submitted = st.form_submit_button("GUARDAR")
-          if submitted:
-            try:
-              if file_path and not os.path.exists(file_path) and file_bytes:
-                with open(file_path, "wb") as f:
-                  f.write(file_bytes)
-
-              try:
-                wb = openpyxl.load_workbook(EXCEL_FILE)
-                ws = wb.active
-              except Exception:
-                wb = openpyxl.Workbook()
-                ws = wb.active
-
-              nuevo_id = ws.max_row
-              ws.append([
-                  nuevo_id,
-                  str(f_fecha),
-                  f_proveedor,
-                  tipo_comprobante,
-                  "Cámara / Archivo Móvil",
-                  f_categoria,
-                  f_base,
-                  f_iva_p,
-                  f_cuota,
-                  f_total,
-                  safe_filename,
-              ])
-              wb.save(EXCEL_FILE)
-
-              if file_path and os.path.exists(file_path):
-                subir_archivo_a_drive(file_path, safe_filename)
-              subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
-
-              del st.session_state[key]
-              st.success(
-                  f"Factura de {f_proveedor} guardada en Excel con éxito."
-              )
-              time.sleep(1)
-              st.rerun()
-            except Exception as e:
-              st.error(f"Error al guardar: {e}")
-
-# 2. OPCION: LISTADO Y EDICION INTERACTIVA
 elif menu == "Listado y Edición Interactiva":
-  st.header("Listado, Edición y Registro de Facturas")
+  st.header("Listado de Facturas")
   if os.path.exists(EXCEL_FILE):
-    try:
-      df = pd.read_excel(EXCEL_FILE)
-      if not df.empty:
-        st.markdown(
-            "Puedes **editar valores directamente en la tabla** o seleccionar las"
-            " casillas para guardar o eliminar filas."
-        )
+    df = pd.read_excel(EXCEL_FILE)
+    if not df.empty:
+      edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
+      if st.button("Guardar Cambios"):
+        edited_df.to_excel(EXCEL_FILE, index=False)
+        subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
+        st.success("¡Actualizado!")
+        st.rerun()
+    else:
+      st.info("No hay registros.")
 
-        edited_df = st.data_editor(
-            df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="tabla_interactiva",
-        )
-
-        if st.button("Guardar Cambios Realizados en la Tabla"):
-          edited_df.to_excel(EXCEL_FILE, index=False)
-          subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
-          st.success("¡El archivo Excel ha sido actualizado correctamente!")
-          time.sleep(1)
-          st.rerun()
-
-        st.divider()
-        st.subheader("Visor de Archivo Guardado")
-        archivos_disponibles = [
-            f for f in df["Archivo Original"].dropna().unique()
-        ]
-        if archivos_disponibles:
-          archivo_sel = st.selectbox(
-              "Selecciona una factura para consultar el documento:",
-              archivos_disponibles,
-          )
-          ruta_archivo = os.path.join(PDF_DIR, archivo_sel)
-          mostrar_archivo_inteligente(ruta_archivo, archivo_sel)
-      else:
-        st.info("No hay facturas registradas todavía.")
-    except Exception as e:
-      st.info(f"Cargando registros... ({e})")
-  else:
-    st.info("El archivo Excel aún no ha sido creado.")
-
-# 3. OPCION: RESUMEN TRIMESTRAL Y EXPORTACION COMPLETA
 elif menu == "Resumen Trimestral y Exportación":
-  st.header("Resumen Trimestral, IVA Soportado y Exportación")
+  st.header("Resumen")
   if os.path.exists(EXCEL_FILE):
-    try:
-      df = pd.read_excel(EXCEL_FILE)
-      if not df.empty:
-        total_base = df["Base Imponible"].sum()
-        total_iva = df["Cuota IVA"].sum()
-        total_general = df["Total"].sum()
-
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Base Imponible Total", f"{total_base:.2f} EUR")
-        col2.metric("IVA Soportado Total", f"{total_iva:.2f} EUR")
-        col3.metric("Gasto Total", f"{total_general:.2f} EUR")
-
-        st.subheader("Desglose por Categoría")
-        col_cat = "Categoria" if "Categoria" in df.columns else "Categoría"
-        resumen_cat = (
-            df.groupby(col_cat)[["Base Imponible", "Cuota IVA", "Total"]]
-            .sum()
-            .reset_index()
-        )
-        st.dataframe(resumen_cat, use_container_width=True)
-
-        st.divider()
-        st.subheader("Exportación de Informes")
-
-        with open(EXCEL_FILE, "rb") as f:
-          excel_bytes = f.read()
-
-        st.download_button(
-            label="Descargar Excel de Registro de Facturas (.xlsx)",
-            data=excel_bytes,
-            file_name=f"registro_facturas_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-        )
-      else:
-        st.info("Aún no hay datos para resumir.")
-    except Exception:
-      st.info("Calculando resumen...")
-  else:
-    st.info("No hay registros disponibles.")
+    df = pd.read_excel(EXCEL_FILE)
+    if not df.empty:
+      st.metric("Gasto Total", f"{df['Total'].sum():.2f} EUR")
+      with open(EXCEL_FILE, "rb") as f:
+        st.download_button("Descargar Excel", data=f.read(), file_name="facturas.xlsx", type="primary")
