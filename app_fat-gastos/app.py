@@ -129,7 +129,6 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
         except Exception as e:
             st.error(f"No se pudo renderizar la vista previa del PDF: {e}")
     else:
-        # Contenedor limpio para imágenes largas
         st.image(file_path, caption="Documento / Ticket", use_container_width=True)
 
 def aclarar_y_optimizar_imagen(image_bytes):
@@ -200,12 +199,14 @@ st.markdown(
         padding: 20px;
         border-radius: 12px;
     }
-    /* Estilo para contener imágenes largas de tickets de forma ordenada */
+    /* Contenedor compacto para imágenes largas de tickets y facturas estilo OkTicket */
     [data-testid="stImage"] img {
-        border-radius: 8px;
-        max-height: 500px;
+        border-radius: 10px;
+        max-height: 380px;
         object-fit: contain;
         background-color: #0B0F19;
+        margin: auto;
+        display: block;
     }
     </style>
 """,
@@ -238,6 +239,7 @@ def inicializar_excel():
         "ID",
         "Fecha",
         "Proveedor",
+        "Tipo",
         "Origen",
         "Categoria",
         "Base Imponible",
@@ -360,7 +362,7 @@ menu = st.sidebar.selectbox(
 if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
-  st.markdown("📂 **Centro de Captura:** Sube o toma fotos de tus tickets y facturas (incluso los más largos). El sistema los comprimirá y organizará automáticamente.")
+  st.markdown("📂 **Centro de Captura:** Sube o toma fotos de tus tickets y facturas. El sistema los comprimirá y organizará automáticamente.")
 
   uploaded_files = st.file_uploader(
       "Toca aquí para Tomar Foto, abrir la Cámara, seleccionar de la Galería o subir PDFs",
@@ -425,7 +427,7 @@ if menu == "Nueva Factura (Individual/Lote)":
   ]
 
   if keys_to_show:
-    st.subheader("Facturas pendientes de guardar en Excel")
+    st.subheader("Confirmar datos y guardar")
 
     if len(keys_to_show) > 1:
       if st.button(
@@ -451,6 +453,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               nuevo_id,
               str(datos.get("fecha", datetime.now().strftime("%Y-%m-%d"))),
               str(datos.get("proveedor", "Desconocido")),
+              "Factura",
               "Cámara / Archivo Móvil",
               str(datos.get("categoria", "Materiales")),
               float(datos.get("base_imponible") or 0.00),
@@ -491,14 +494,14 @@ if menu == "Nueva Factura (Individual/Lote)":
       except (ValueError, TypeError):
         fecha_valida = datetime.now().date()
 
-      with st.expander(f"Revisar: {safe_filename.split('_', 2)[-1]}", expanded=True):
-        col_form, col_visor = st.columns([1.1, 0.9])
-
-        with col_visor:
-          st.markdown("**📸 Previsualización del Documento**")
+      with st.expander(f"Confirmar datos: {safe_filename.split('_', 2)[-1]}", expanded=True):
+        
+        # --- DISEÑO ESTILO OKTICKET: Imagen compacta arriba y selector de tipo ---
+        col_img_center = st.columns([1, 2, 1])
+        with col_img_center[1]:
           if os.path.exists(file_path):
             if safe_filename.lower().endswith(".pdf"):
-              st.info("📄 Documento PDF convertido para previsualización:")
+              st.info("📄 Documento PDF convertido:")
               with open(file_path, "rb") as f:
                 pdf_bytes = f.read()
               st.download_button(
@@ -516,20 +519,31 @@ if menu == "Nueva Factura (Individual/Lote)":
                 pix = page.get_pixmap(dpi=150)
                 img_path = file_path + ".png"
                 pix.save(img_path)
-                st.image(img_path, caption="Vista previa de la factura (PDF)", use_container_width=True)
+                st.image(img_path, caption="", use_container_width=True)
               except Exception:
-                st.warning("No se pudo generar la vista previa automática del PDF.")
+                st.warning("No se pudo generar la vista previa del PDF.")
             else:
-              st.image(file_path, caption="Ticket optimizado para lectura", use_container_width=True)
+              st.image(file_path, caption="", use_container_width=True)
           else:
-            st.warning("El archivo local no está disponible para previsualizar.")
+            st.warning("El archivo local no está disponible.")
 
-        with col_form:
-          with st.form(key=f"form_{safe_filename}"):
-            f_fecha = st.date_input("Fecha", value=fecha_valida)
+        st.divider()
+
+        with st.form(key=f"form_{safe_filename}"):
+          # Selector estilo pastilla de Ticket o Factura
+          tipo_comprobante = st.radio(
+              "Tipo de documento",
+              ["Ticket", "Factura"],
+              horizontal=True,
+              label_visibility="collapsed"
+          )
+
+          col1, col2 = st.columns(2)
+          with col1:
             f_proveedor = st.text_input(
-                "Proveedor", value=str(datos.get("proveedor", ""))
+                "Razón social / Proveedor", value=str(datos.get("proveedor", ""))
             )
+            f_fecha = st.date_input("Fecha", value=fecha_valida)
             cat_detectada = str(datos.get("categoria", "Materiales"))
             categorias_validas = [
                 "Materiales",
@@ -546,6 +560,12 @@ if menu == "Nueva Factura (Individual/Lote)":
                 "Categoría", categorias_validas, index=index_cat
             )
 
+          with col2:
+            f_total = st.number_input(
+                "Importe total (EUR)*",
+                value=float(datos.get("total") or 0.00),
+                format="%.2f",
+            )
             f_base = st.number_input(
                 "Base Imponible (EUR)",
                 value=float(datos.get("base_imponible") or 0.00),
@@ -561,44 +581,40 @@ if menu == "Nueva Factura (Individual/Lote)":
                 value=float(datos.get("cuota_iva") or 0.00),
                 format="%.2f",
             )
-            f_total = st.number_input(
-                "Total (EUR)",
-                value=float(datos.get("total") or 0.00),
-                format="%.2f",
+
+          submitted = st.form_submit_button("GUARDAR")
+          if submitted:
+            if not os.path.exists(file_path) and file_bytes:
+              with open(file_path, "wb") as f:
+                f.write(file_bytes)
+
+            wb = openpyxl.load_workbook(EXCEL_FILE)
+            ws = wb.active
+            nuevo_id = ws.max_row
+            ws.append([
+                nuevo_id,
+                str(f_fecha),
+                f_proveedor,
+                tipo_comprobante,
+                "Cámara / Archivo Móvil",
+                f_categoria,
+                f_base,
+                f_iva_p,
+                f_cuota,
+                f_total,
+                safe_filename,
+            ])
+            wb.save(EXCEL_FILE)
+
+            subir_archivo_a_drive(file_path, safe_filename)
+            subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
+
+            del st.session_state[key]
+            st.success(
+                f"Factura de {f_proveedor} guardada en Excel con éxito."
             )
-
-            submitted = st.form_submit_button("Guardar Factura en Excel")
-            if submitted:
-              if not os.path.exists(file_path) and file_bytes:
-                with open(file_path, "wb") as f:
-                  f.write(file_bytes)
-
-              wb = openpyxl.load_workbook(EXCEL_FILE)
-              ws = wb.active
-              nuevo_id = ws.max_row
-              ws.append([
-                  nuevo_id,
-                  str(f_fecha),
-                  f_proveedor,
-                  "Cámara / Archivo Móvil",
-                  f_categoria,
-                  f_base,
-                  f_iva_p,
-                  f_cuota,
-                  f_total,
-                  safe_filename,
-              ])
-              wb.save(EXCEL_FILE)
-
-              subir_archivo_a_drive(file_path, safe_filename)
-              subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
-
-              del st.session_state[key]
-              st.success(
-                  f"Factura de {f_proveedor} guardada en Excel con éxito."
-              )
-              time.sleep(1)
-              st.rerun()
+            time.sleep(1)
+            st.rerun()
 
 # 2. OPCION: LISTADO Y EDICION INTERACTIVA
 elif menu == "Listado y Edición Interactiva":
