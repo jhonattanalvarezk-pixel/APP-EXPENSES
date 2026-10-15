@@ -236,6 +236,7 @@ def inicializar_excel():
         "ID",
         "Fecha",
         "Proveedor",
+        "Nº Factura",
         "Origen",
         "Categoria",
         "Base Imponible",
@@ -255,6 +256,29 @@ def limpiar_json_string(texto: str) -> str:
   texto = re.sub(r"```$", "", texto, flags=re.MULTILINE)
   return texto.strip()
 
+def verificar_factura_duplicada(num_factura, proveedor):
+    """Comprueba en el Excel si ya existe una factura con el mismo número y proveedor."""
+    if not os.path.exists(EXCEL_FILE) or not num_factura or num_factura.lower() in ["", "desconocido", "s/n", "ninguno"]:
+        return False
+    try:
+        df = pd.read_excel(EXCEL_FILE)
+        if df.empty or "Nº Factura" not in df.columns:
+            return False
+        
+        # Normalizar para comparar sin espacios ni mayúsculas
+        num_limpio = str(num_factura).strip().lower()
+        prov_limpio = str(proveedor).strip().lower()
+        
+        for _, row in df.iterrows():
+            f_num = str(row.get("Nº Factura", "")).strip().lower()
+            f_prov = str(row.get("Proveedor", "")).strip().lower()
+            
+            if f_num == num_limpio and f_num != "":
+                return True
+    except Exception as e:
+        print(f"Error verificando duplicados: {e}")
+    return False
+
 def extraer_datos_factura(file_bytes, mime_type, api_key):
   client = genai.Client(api_key=api_key)
 
@@ -262,13 +286,14 @@ def extraer_datos_factura(file_bytes, mime_type, api_key):
     Analiza este documento de factura o ticket y extrae los siguientes datos en formato JSON estricto:
     - fecha: Fecha de la factura en formato AAAA-MM-DD (si no se encuentra, pon la fecha actual).
     - proveedor: Nombre de la tienda, empresa o emisor de la factura.
+    - numero_factura: Número o código identificativo de la factura/ticket (si no tiene, pon "S/N").
     - categoria: Clasifica el gasto en una de estas opciones: Materiales, Transporte, Herramientas, Varios.
     - base_imponible: Numero decimal con la base imponible total.
     - iva_porcentaje: Numero entero o decimal con el tipo de IVA principal (ej: 21, 10, 4).
     - cuota_iva: Numero decimal con el importe total del IVA.
     - total: Numero decimal con el importe total de la factura.
     
-    Devuelve UNICAMENTE un JSON valido con estas claves: fecha, proveedor, categoria, base_imponible, iva_porcentaje, cuota_iva, total.
+    Devuelve UNICAMENTE un JSON valido con estas claves: fecha, proveedor, numero_factura, categoria, base_imponible, iva_porcentaje, cuota_iva, total.
     """
 
   ext = ".pdf" if "pdf" in mime_type else ".jpg"
@@ -328,7 +353,7 @@ menu = st.sidebar.selectbox(
 if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
-  st.markdown("📂 **Centro de Captura:** Sube o toma fotos de tus tickets y facturas (incluso los más largos). El sistema los comprimirá y organizará automáticamente.")
+  st.markdown("📂 **Centro de Captura:** Sube o toma fotos de tus tickets y facturas. El sistema detectará automáticamente si ya están registradas para evitar duplicados.")
 
   uploaded_files = st.file_uploader(
       "Toca aquí para Tomar Foto, abrir la Cámara, seleccionar de la Galería o subir PDFs",
@@ -364,17 +389,25 @@ if menu == "Nueva Factura (Individual/Lote)":
           file_bytes = uploaded_file.getvalue()
           mime_type = uploaded_file.type
 
-          timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-          safe_filename = f"{timestamp}_{uploaded_file.name}"
-          file_path = os.path.join(PDF_DIR, safe_filename)
-          
-          with open(file_path, "wb") as f:
-            f.write(file_bytes)
-
           try:
             json_str = extraer_datos_factura(file_bytes, mime_type, api_key)
             json_str_limpio = limpiar_json_string(json_str)
             datos = json.loads(json_str_limpio)
+
+            num_factura_detectado = datos.get("numero_factura", "S/N")
+            proveedor_detectado = datos.get("proveedor", "Desconocido")
+
+            # VALIDACION DE DUPLICADOS
+            if verificar_factura_duplicada(num_factura_detectado, proveedor_detectado):
+              st.error(f"⚠️ **Factura Duplicada Bloqueada:** La factura número **'{num_factura_detectado}'** del proveedor **'{proveedor_detectado}'** ya se encuentra registrada en el sistema.")
+              continue
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_filename = f"{timestamp}_{uploaded_file.name}"
+            file_path = os.path.join(PDF_DIR, safe_filename)
+            
+            with open(file_path, "wb") as f:
+              f.write(file_bytes)
 
             st.session_state[f"datos_{safe_filename}"] = {
                 "datos": datos,
@@ -419,6 +452,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               nuevo_id,
               str(datos.get("fecha", datetime.now().strftime("%Y-%m-%d"))),
               str(datos.get("proveedor", "Desconocido")),
+              str(datos.get("numero_factura", "S/N")),
               "Cámara / Archivo Móvil",
               str(datos.get("categoria", "Materiales")),
               float(datos.get("base_imponible") or 0.00),
@@ -494,6 +528,7 @@ if menu == "Nueva Factura (Individual/Lote)":
 
         with col_form:
           with st.form(key=f"form_{safe_filename}"):
+            f_num_factura = st.text_input("Nº de Factura", value=str(datos.get("numero_factura", "S/N")))
             f_fecha = st.date_input("Fecha", value=fecha_valida)
             f_proveedor = st.text_input(
                 "Proveedor", value=str(datos.get("proveedor", ""))
@@ -548,6 +583,7 @@ if menu == "Nueva Factura (Individual/Lote)":
                   nuevo_id,
                   str(f_fecha),
                   f_proveedor,
+                  f_num_factura,
                   "Cámara / Archivo Móvil",
                   f_categoria,
                   f_base,
@@ -647,7 +683,3 @@ elif menu == "Resumen Trimestral y Exportación":
           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           type="primary",
       )
-    else:
-      st.info("Aún no hay datos para resumir.")
-  else:
-    st.info("No hay registros disponibles.")
