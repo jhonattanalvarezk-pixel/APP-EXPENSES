@@ -132,10 +132,22 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
         st.image(file_path, use_container_width=True)
 
 def aclarar_y_optimizar_imagen(image_bytes):
-    """Aplica mejoras de contraste y nitidez a la foto del documento para optimizar la lectura de la IA."""
+    """Comprime, redimensiona y aplica alto contraste automáticamente para que la foto suba al instante sin pesar."""
     try:
         img = Image.open(io.BytesIO(image_bytes))
         
+        # Convertir a RGB si viene en RGBA o modo paleta
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+            
+        # Redimensionar si es muy grande (máximo 1200px de ancho) para evitar que pese megabytes
+        max_width = 1200
+        if img.width > max_width:
+            w_percent = (max_width / float(img.width))
+            h_size = int(float(img.height) * float(w_percent))
+            img = img.resize((max_width, h_size), Image.Resampling.LANCZOS)
+            
+        # Mejorar contraste y nitidez para que la IA lea perfectamente el ticket
         enhancer_contrast = ImageEnhance.Contrast(img)
         img = enhancer_contrast.enhance(1.5)
         
@@ -143,7 +155,8 @@ def aclarar_y_optimizar_imagen(image_bytes):
         img = enhancer_sharpness.enhance(1.6)
         
         output_io = io.BytesIO()
-        img.save(output_io, format="JPEG", quality=95)
+        # Guardar comprimido en JPEG (calidad 85) para asegurar subida rápida e inmediata
+        img.save(output_io, format="JPEG", quality=85, optimize=True)
         return output_io.getvalue()
     except Exception:
         return image_bytes
@@ -345,14 +358,14 @@ if menu == "Nueva Factura (Individual/Lote)":
 
   origen_seleccionado = st.radio(
       "Método de captura:",
-      ["Cámara Escáner (Con Aclarado Automático)", "Subir Archivo / PDF / Imágenes"],
+      ["Cámara Escáner (Con Compresión y Aclarado)", "Subir Archivo / PDF / Imágenes"],
       horizontal=True,
   )
 
   uploaded_files_list = []
 
-  if origen_seleccionado == "Cámara Escáner (Con Aclarado Automático)":
-    st.markdown("📷 **Escáner Profesional:** Captura tu ticket o factura con la cámara. El sistema aplicará un aclarado automático de alto contraste para optimizar la lectura.")
+  if origen_seleccionado == "Cámara Escáner (Con Compresión y Aclarado)":
+    st.markdown("📷 **Escáner Automático:** Toma la foto. El sistema comprimirá y optimizará la imagen al vuelo para asegurar una subida inmediata sin bloqueos.")
     
     cam_file = st.file_uploader(
         "Toca aquí para abrir la cámara o seleccionar imagen",
@@ -365,8 +378,9 @@ if menu == "Nueva Factura (Individual/Lote)":
       try:
         bytes_originales = cam_file.getvalue()
         if not bytes_originales:
-          st.error("⚠️ El archivo capturado está vacío. Por favor, inténtalo de nuevo.")
+          st.error("⚠️ El archivo capturado está vacío. Inténtalo de nuevo.")
         else:
+          # Comprimir y aclarar automáticamente al vuelo
           bytes_mejorados = aclarar_y_optimizar_imagen(bytes_originales)
           
           class CapturedImage:
@@ -377,10 +391,10 @@ if menu == "Nueva Factura (Individual/Lote)":
             def getvalue(self):
               return self.data
               
-          uploaded_files_list.append(CapturedImage(bytes_mejorados, "factura_escaneada.jpg"))
-          st.success("¡Imagen capturada y optimizada correctamente!")
+          uploaded_files_list.append(CapturedImage(bytes_mejorados, "ticket_comprimido.jpg"))
+          st.success("¡Foto capturada, comprimida y lista para procesar!")
       except Exception as e:
-        st.error(f"Error al procesar la imagen de la cámara: {e}")
+        st.error(f"Error al procesar la foto: {e}")
   else:
     uploaded_files = st.file_uploader(
         "Sube una o varias imágenes o PDFs",
@@ -463,7 +477,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               f.write(file_bytes)
 
           nuevo_id = ws.max_row
-          origen_etiqueta = "Cámara Escáner" if origen_seleccionado == "Cámara Escáner (Con Aclarado Automático)" else "Archivo / Documento"
+          origen_etiqueta = "Cámara Escáner" if origen_seleccionado == "Cámara Escáner (Con Compresión y Aclarado)" else "Archivo / Documento"
 
           ws.append([
               nuevo_id,
@@ -594,7 +608,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               wb = openpyxl.load_workbook(EXCEL_FILE)
               ws = wb.active
               nuevo_id = ws.max_row
-              origen_etiqueta = "Cámara Escáner" if origen_seleccionado == "Cámara Escáner (Con Aclarado Automático)" else "Archivo / Documento"
+              origen_etiqueta = "Cámara Escáner" if origen_seleccionado == "Cámara Escáner (Con Compresión y Aclarado)" else "Archivo / Documento"
 
               ws.append([
                   nuevo_id,
