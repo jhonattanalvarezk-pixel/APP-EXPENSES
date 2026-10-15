@@ -96,7 +96,7 @@ def descargar_archivo_de_drive(nombre_archivo, destino_path):
         return False
 
 def mostrar_archivo_inteligente(file_path, archivo_nombre):
-    """Muestra la imagen o PDF convertido directamente en pantalla asegurando su previsualización."""
+    """Muestra la imagen o PDF convertido directamente en pantalla con un contenedor limpio."""
     if not os.path.exists(file_path):
         with st.spinner("Recuperando documento..."):
             encontrado = descargar_archivo_de_drive(archivo_nombre, file_path)
@@ -129,7 +129,8 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
         except Exception as e:
             st.error(f"No se pudo renderizar la vista previa del PDF: {e}")
     else:
-        st.image(file_path, use_container_width=True)
+        # Contenedor limpio para imágenes largas
+        st.image(file_path, caption="Documento / Ticket", use_container_width=True)
 
 def aclarar_y_optimizar_imagen(image_bytes):
     """Comprime, redimensiona y aplica alto contraste automáticamente."""
@@ -198,6 +199,13 @@ st.markdown(
         border: 1px solid #334155 !important;
         padding: 20px;
         border-radius: 12px;
+    }
+    /* Estilo para contener imágenes largas de tickets de forma ordenada */
+    [data-testid="stImage"] img {
+        border-radius: 8px;
+        max-height: 500px;
+        object-fit: contain;
+        background-color: #0B0F19;
     }
     </style>
 """,
@@ -352,9 +360,8 @@ menu = st.sidebar.selectbox(
 if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
-  st.markdown("📂 **Centro de Captura:** Sube una o varias facturas (Imágenes, Fotos tomadas con el móvil o archivos PDF). El sistema optimizará las imágenes automáticamente.")
+  st.markdown("📂 **Centro de Captura:** Sube o toma fotos de tus tickets y facturas (incluso los más largos). El sistema los comprimirá y organizará automáticamente.")
 
-  # Único selector robusto que acepta tanto fotos directas, galería o PDFs sin restricciones de tipo
   uploaded_files = st.file_uploader(
       "Toca aquí para Tomar Foto, abrir la Cámara, seleccionar de la Galería o subir PDFs",
       type=["png", "jpg", "jpeg", "webp", "pdf"],
@@ -367,7 +374,6 @@ if menu == "Nueva Factura (Individual/Lote)":
   if uploaded_files:
     for uf in uploaded_files:
       if uf.type.startswith("image/"):
-        # Comprimir y optimizar al vuelo para evitar bloqueos
         bytes_mejorados = aclarar_y_optimizar_imagen(uf.getvalue())
         class ProcessedImage:
           def __init__(self, data, name, mime):
@@ -486,7 +492,7 @@ if menu == "Nueva Factura (Individual/Lote)":
         fecha_valida = datetime.now().date()
 
       with st.expander(f"Revisar: {safe_filename.split('_', 2)[-1]}", expanded=True):
-        col_form, col_visor = st.columns([1.2, 0.8])
+        col_form, col_visor = st.columns([1.1, 0.9])
 
         with col_visor:
           st.markdown("**📸 Previsualización del Documento**")
@@ -514,7 +520,7 @@ if menu == "Nueva Factura (Individual/Lote)":
               except Exception:
                 st.warning("No se pudo generar la vista previa automática del PDF.")
             else:
-              st.image(file_path, caption="Factura optimizada y aclarada para la IA", use_container_width=True)
+              st.image(file_path, caption="Ticket optimizado para lectura", use_container_width=True)
           else:
             st.warning("El archivo local no está disponible para previsualizar.")
 
