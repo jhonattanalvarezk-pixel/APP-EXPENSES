@@ -117,7 +117,7 @@ def aclarar_y_optimizar_imagen(image_bytes):
 
 st.set_page_config(page_title="Gestión de Facturas Pro", page_icon="🧾", layout="wide")
 
-# CSS para limpiar por completo los textos largos y hacer la interfaz estilo app nativa
+# CSS limpio y profesional sin alterar los componentes internos
 st.markdown("""
     <style>
     .stApp { background-color: #0F172A; color: #F8FAFC; }
@@ -127,10 +127,6 @@ st.markdown("""
         color: white; border-radius: 8px; font-weight: 600; border: none; width: 100%;
     }
     .stForm { background-color: #1E293B; border: 1px solid #334155 !important; border-radius: 12px; }
-    /* Ocultar textos molestos y rediseñar el uploader para que sea minimalista */
-    [data-testid="stFileUploader"] section { padding: 10px !important; background-color: #1E293B; border: 2px dashed #334155; border-radius: 10px; }
-    [data-testid="stFileUploader"] section div span { font-size: 0px !important; }
-    [data-testid="stFileUploader"] section div span::after { content: "📁 Toca aquí para elegir foto o PDF"; font-size: 14px; color: #38BDF8; font-weight: 600; }
     [data-testid="stImage"] img { border-radius: 10px; max-height: 380px; object-fit: contain; background-color: #0B0F19; }
     </style>
 """, unsafe_allow_html=True)
@@ -211,8 +207,7 @@ menu = st.sidebar.selectbox("Menú", ["Nueva Factura (Individual/Lote)", "Listad
 if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
-  # Uploader limpio sin textos molestos
-  uploaded_file = st.file_uploader("", type=["png", "jpg", "jpeg", "webp", "pdf"], key="u_unico")
+  uploaded_file = st.file_uploader("Selecciona imagen o PDF", type=["png", "jpg", "jpeg", "webp", "pdf"], key="u_unico")
 
   if uploaded_file:
     if not api_key:
