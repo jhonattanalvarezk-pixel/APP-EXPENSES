@@ -132,22 +132,19 @@ def mostrar_archivo_inteligente(file_path, archivo_nombre):
         st.image(file_path, use_container_width=True)
 
 def aclarar_y_optimizar_imagen(image_bytes):
-    """Comprime, redimensiona y aplica alto contraste automáticamente para que la foto suba al instante sin pesar."""
+    """Comprime, redimensiona y aplica alto contraste automáticamente."""
     try:
         img = Image.open(io.BytesIO(image_bytes))
         
-        # Convertir a RGB si viene en RGBA o modo paleta
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
             
-        # Redimensionar si es muy grande (máximo 1200px de ancho) para evitar que pese megabytes
         max_width = 1200
         if img.width > max_width:
             w_percent = (max_width / float(img.width))
             h_size = int(float(img.height) * float(w_percent))
             img = img.resize((max_width, h_size), Image.Resampling.LANCZOS)
             
-        # Mejorar contraste y nitidez para que la IA lea perfectamente el ticket
         enhancer_contrast = ImageEnhance.Contrast(img)
         img = enhancer_contrast.enhance(1.5)
         
@@ -155,7 +152,6 @@ def aclarar_y_optimizar_imagen(image_bytes):
         img = enhancer_sharpness.enhance(1.6)
         
         output_io = io.BytesIO()
-        # Guardar comprimido en JPEG (calidad 85) para asegurar subida rápida e inmediata
         img.save(output_io, format="JPEG", quality=85, optimize=True)
         return output_io.getvalue()
     except Exception:
@@ -356,65 +352,33 @@ menu = st.sidebar.selectbox(
 if menu == "Nueva Factura (Individual/Lote)":
   st.header("Carga de Facturas y Tickets")
 
-  origen_seleccionado = st.radio(
-      "Método de captura:",
-      ["Cámara Escáner (Con Compresión y Aclarado)", "Subir Archivo / PDF / Imágenes"],
-      horizontal=True,
+  st.markdown("📂 **Centro de Captura:** Sube una o varias facturas (Imágenes, Fotos tomadas con el móvil o archivos PDF). El sistema optimizará las imágenes automáticamente.")
+
+  # Único selector robusto que acepta tanto fotos directas, galería o PDFs sin restricciones de tipo
+  uploaded_files = st.file_uploader(
+      "Toca aquí para Tomar Foto, abrir la Cámara, seleccionar de la Galería o subir PDFs",
+      type=["png", "jpg", "jpeg", "webp", "pdf"],
+      accept_multiple_files=True,
+      key="selector_universal_facturas"
   )
 
   uploaded_files_list = []
 
-  if origen_seleccionado == "Cámara Escáner (Con Compresión y Aclarado)":
-    st.markdown("📷 **Escáner Automático:** Toma la foto. El sistema comprimirá y optimizará la imagen al vuelo para asegurar una subida inmediata sin bloqueos.")
-    
-    cam_file = st.file_uploader(
-        "Toca aquí para abrir la cámara o seleccionar imagen",
-        type=["png", "jpg", "jpeg", "webp"],
-        accept_multiple_files=False,
-        key="escaneo_camara_pro"
-    )
-    
-    if cam_file is not None:
-      try:
-        bytes_originales = cam_file.getvalue()
-        if not bytes_originales:
-          st.error("⚠️ El archivo capturado está vacío. Inténtalo de nuevo.")
-        else:
-          # Comprimir y aclarar automáticamente al vuelo
-          bytes_mejorados = aclarar_y_optimizar_imagen(bytes_originales)
-          
-          class CapturedImage:
-            def __init__(self, data, name):
-              self.data = data
-              self.name = name
-              self.type = "image/jpeg"
-            def getvalue(self):
-              return self.data
-              
-          uploaded_files_list.append(CapturedImage(bytes_mejorados, "ticket_comprimido.jpg"))
-          st.success("¡Foto capturada, comprimida y lista para procesar!")
-      except Exception as e:
-        st.error(f"Error al procesar la foto: {e}")
-  else:
-    uploaded_files = st.file_uploader(
-        "Sube una o varias imágenes o PDFs",
-        type=["png", "jpg", "jpeg", "webp", "pdf"],
-        accept_multiple_files=True,
-    )
-    if uploaded_files:
-      for uf in uploaded_files:
-        if uf.type.startswith("image/"):
-          bytes_mejorados = aclarar_y_optimizar_imagen(uf.getvalue())
-          class ProcessedImage:
-            def __init__(self, data, name, mime):
-              self.data = data
-              self.name = name
-              self.type = mime
-            def getvalue(self):
-              return self.data
-          uploaded_files_list.append(ProcessedImage(bytes_mejorados, uf.name, uf.type))
-        else:
-          uploaded_files_list.append(uf)
+  if uploaded_files:
+    for uf in uploaded_files:
+      if uf.type.startswith("image/"):
+        # Comprimir y optimizar al vuelo para evitar bloqueos
+        bytes_mejorados = aclarar_y_optimizar_imagen(uf.getvalue())
+        class ProcessedImage:
+          def __init__(self, data, name, mime):
+            self.data = data
+            self.name = name
+            self.type = mime
+          def getvalue(self):
+            return self.data
+        uploaded_files_list.append(ProcessedImage(bytes_mejorados, uf.name, "image/jpeg"))
+      else:
+        uploaded_files_list.append(uf)
 
   if uploaded_files_list and not api_key:
     st.warning("Por favor, introduce tu Gemini API Key en la barra lateral.")
@@ -477,13 +441,11 @@ if menu == "Nueva Factura (Individual/Lote)":
               f.write(file_bytes)
 
           nuevo_id = ws.max_row
-          origen_etiqueta = "Cámara Escáner" if origen_seleccionado == "Cámara Escáner (Con Compresión y Aclarado)" else "Archivo / Documento"
-
           ws.append([
               nuevo_id,
               str(datos.get("fecha", datetime.now().strftime("%Y-%m-%d"))),
               str(datos.get("proveedor", "Desconocido")),
-              origen_etiqueta,
+              "Cámara / Archivo Móvil",
               str(datos.get("categoria", "Materiales")),
               float(datos.get("base_imponible") or 0.00),
               float(datos.get("iva_porcentaje") or 21.0),
@@ -608,13 +570,11 @@ if menu == "Nueva Factura (Individual/Lote)":
               wb = openpyxl.load_workbook(EXCEL_FILE)
               ws = wb.active
               nuevo_id = ws.max_row
-              origen_etiqueta = "Cámara Escáner" if origen_seleccionado == "Cámara Escáner (Con Compresión y Aclarado)" else "Archivo / Documento"
-
               ws.append([
                   nuevo_id,
                   str(f_fecha),
                   f_proveedor,
-                  origen_etiqueta,
+                  "Cámara / Archivo Móvil",
                   f_categoria,
                   f_base,
                   f_iva_p,
