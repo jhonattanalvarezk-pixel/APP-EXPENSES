@@ -442,7 +442,6 @@ if menu == "Nueva Factura (Individual/Lote)":
               f.write(file_bytes)
 
           nuevo_id = ws.max_row
-          # ORDEN EXACTO DE COLUMNAS: ID, Fecha, Proveedor, Nº Factura, Origen, Categoria, Base Imponible, IVA (%), Cuota IVA, Total, Archivo Original
           ws.append([
               nuevo_id,
               str(datos.get("fecha", datetime.now().strftime("%Y-%m-%d"))),
@@ -574,7 +573,6 @@ if menu == "Nueva Factura (Individual/Lote)":
               wb = openpyxl.load_workbook(EXCEL_FILE)
               ws = wb.active
               nuevo_id = ws.max_row
-              # ORDEN EXACTO DE COLUMNAS AL GUARDAR
               ws.append([
                   nuevo_id,
                   str(f_fecha),
@@ -627,9 +625,15 @@ elif menu == "Listado y Edición Interactiva":
 
       st.divider()
       st.subheader("Visor de Archivo Guardado")
-      archivos_disponibles = [
-          f for f in df["Archivo Original"].dropna().unique()
-      ]
+      
+      # FILTRADO SEGURO DE ARCHIVOS: Solo toma strings reales para evitar errores de tipo
+      archivos_disponibles = []
+      if "Archivo Original" in df.columns:
+          archivos_disponibles = [
+              str(f) for f in df["Archivo Original"].dropna().unique() 
+              if isinstance(f, (str, bytes)) and str(f).strip() != "" and str(f).lower() != "nan"
+          ]
+
       if archivos_disponibles:
         archivo_sel = st.selectbox(
             "Selecciona una factura para consultar el documento:",
@@ -637,6 +641,8 @@ elif menu == "Listado y Edición Interactiva":
         )
         ruta_archivo = os.path.join(PDF_DIR, archivo_sel)
         mostrar_archivo_inteligente(ruta_archivo, archivo_sel)
+      else:
+        st.info("No hay archivos originales vinculados disponibles en los registros.")
     else:
       st.info("No hay facturas registradas todavía.")
   else:
