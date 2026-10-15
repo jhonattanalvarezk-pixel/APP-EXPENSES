@@ -442,6 +442,8 @@ if menu == "Nueva Factura (Individual/Lote)":
               f.write(file_bytes)
 
           nuevo_id = ws.max_row
+          # ORDEN ESTRICTO Y CORREGIDO DE LAS 11 COLUMNAS:
+          # 0: ID, 1: Fecha, 2: Proveedor, 3: Nº Factura, 4: Origen, 5: Categoria, 6: Base Imponible, 7: IVA (%), 8: Cuota IVA, 9: Total, 10: Archivo Original
           ws.append([
               nuevo_id,
               str(datos.get("fecha", datetime.now().strftime("%Y-%m-%d"))),
@@ -573,6 +575,8 @@ if menu == "Nueva Factura (Individual/Lote)":
               wb = openpyxl.load_workbook(EXCEL_FILE)
               ws = wb.active
               nuevo_id = ws.max_row
+              
+              # ORDEN ESTRICTO Y CORREGIDO DE LAS 11 COLUMNAS AL GUARDAR INDIVIDUAL:
               ws.append([
                   nuevo_id,
                   str(f_fecha),
@@ -593,99 +597,4 @@ if menu == "Nueva Factura (Individual/Lote)":
 
               del st.session_state[key]
               st.success(
-                  f"Factura de {f_proveedor} guardada en Excel con éxito."
-              )
-              time.sleep(1)
-              st.rerun()
-
-# 2. OPCION: LISTADO Y EDICION INTERACTIVA
-elif menu == "Listado y Edición Interactiva":
-  st.header("Listado, Edición y Registro de Facturas")
-  if os.path.exists(EXCEL_FILE):
-    df = pd.read_excel(EXCEL_FILE)
-    if not df.empty:
-      st.markdown(
-          "Puedes **editar valores directamente en la tabla** o seleccionar las"
-          " casillas para guardar o eliminar filas."
-      )
-
-      edited_df = st.data_editor(
-          df,
-          num_rows="dynamic",
-          use_container_width=True,
-          key="tabla_interactiva",
-      )
-
-      if st.button("Guardar Cambios Realizados en la Tabla"):
-        edited_df.to_excel(EXCEL_FILE, index=False)
-        subir_archivo_a_drive(EXCEL_FILE, EXCEL_FILE)
-        st.success("¡El archivo Excel ha sido actualizado correctamente!")
-        time.sleep(1)
-        st.rerun()
-
-      st.divider()
-      st.subheader("Visor de Archivo Guardado")
-      
-      # FILTRADO SEGURO DE ARCHIVOS: Solo toma strings reales para evitar errores de tipo
-      archivos_disponibles = []
-      if "Archivo Original" in df.columns:
-          archivos_disponibles = [
-              str(f) for f in df["Archivo Original"].dropna().unique() 
-              if isinstance(f, (str, bytes)) and str(f).strip() != "" and str(f).lower() != "nan"
-          ]
-
-      if archivos_disponibles:
-        archivo_sel = st.selectbox(
-            "Selecciona una factura para consultar el documento:",
-            archivos_disponibles,
-        )
-        ruta_archivo = os.path.join(PDF_DIR, archivo_sel)
-        mostrar_archivo_inteligente(ruta_archivo, archivo_sel)
-      else:
-        st.info("No hay archivos originales vinculados disponibles en los registros.")
-    else:
-      st.info("No hay facturas registradas todavía.")
-  else:
-    st.info("El archivo Excel aún no ha sido creado.")
-
-# 3. OPCION: RESUMEN TRIMESTRAL Y EXPORTACION COMPLETA
-elif menu == "Resumen Trimestral y Exportación":
-  st.header("Resumen Trimestral, IVA Soportado y Exportación")
-  if os.path.exists(EXCEL_FILE):
-    df = pd.read_excel(EXCEL_FILE)
-    if not df.empty:
-      total_base = df["Base Imponible"].sum()
-      total_iva = df["Cuota IVA"].sum()
-      total_general = df["Total"].sum()
-
-      col1, col2, col3 = st.columns(3)
-      col1.metric("Base Imponible Total", f"{total_base:.2f} EUR")
-      col2.metric("IVA Soportado Total", f"{total_iva:.2f} EUR")
-      col3.metric("Gasto Total", f"{total_general:.2f} EUR")
-
-      st.subheader("Desglose por Categoría")
-      col_cat = "Categoria" if "Categoria" in df.columns else "Categoría"
-      resumen_cat = (
-          df.groupby(col_cat)[["Base Imponible", "Cuota IVA", "Total"]]
-          .sum()
-          .reset_index()
-      )
-      st.dataframe(resumen_cat, use_container_width=True)
-
-      st.divider()
-      st.subheader("Exportación de Informes")
-
-      with open(EXCEL_FILE, "rb") as f:
-        excel_bytes = f.read()
-
-      st.download_button(
-          label="Descargar Excel de Registro de Facturas (.xlsx)",
-          data=excel_bytes,
-          file_name=f"registro_facturas_{datetime.now().strftime('%Y%m%d')}.xlsx",
-          mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          type="primary",
-      )
-    else:
-      st.info("Aún no hay datos para resumir.")
-  else:
-    st.info("No hay registros disponibles.")
+                  f"Factura
